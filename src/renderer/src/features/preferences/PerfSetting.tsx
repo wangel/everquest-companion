@@ -18,7 +18,16 @@
 // Stacks.
 
 import { type JSX, useCallback, useState } from 'react'
-import { Box, Button, Chip, FormControlLabel, Stack, Switch, Typography } from '@mui/material'
+import {
+  Box,
+  Button,
+  Chip,
+  FormControlLabel,
+  Stack,
+  Switch,
+  TextField,
+  Typography
+} from '@mui/material'
 import SpeedIcon from '@mui/icons-material/Speed'
 import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import { DEV_TOOLS } from '../../devFlags'
@@ -29,6 +38,11 @@ import {
   type StartupProfile
 } from '@shared/perf'
 import type { ProcessPriorityPrefs } from '@shared/processPriority'
+import {
+  MAX_ARCHIVE_THRESHOLD_MB,
+  MIN_ARCHIVE_THRESHOLD_MB,
+  type LogArchivePrefs
+} from '@shared/logArchive'
 import { formatDateTime } from '../../lib/formatDate'
 import { recordPref, usePrefsSeed } from './prefsHydration'
 import type { PrefSection } from './PreferencesView'
@@ -117,6 +131,79 @@ function YieldCpuSetting(): JSX.Element {
           ? 'EverQuest gets the processor first whenever this app and the game want it at the same moment.'
           : 'Off. This app and EverQuest compete for the processor on equal terms.'}
       </Typography>
+    </Stack>
+  )
+}
+
+/** The rotation prefs, seeded and written back exactly like the two switches above. */
+function useLogArchive(): [LogArchivePrefs, (patch: Partial<LogArchivePrefs>) => void] {
+  const [prefs, setPrefs] = useState<LogArchivePrefs>(usePrefsSeed().logArchive)
+
+  const patch = useCallback(
+    (p: Partial<LogArchivePrefs>) => {
+      setPrefs((cur) => ({ ...cur, ...p }))
+      void window.eq.setLogArchive(p).then((stored) => {
+        // Main's reply is authoritative: it has clamped the threshold, so a typed 9999 snaps back
+        // to the ceiling here rather than leaving the field showing a number nothing will honour.
+        setPrefs(stored)
+        recordPref('logArchive', stored)
+      })
+    },
+    []
+  )
+
+  return [prefs, patch]
+}
+
+/**
+ * LOG ARCHIVING - the only control in this app that changes a file inside the user's EverQuest
+ * install, which is why it ships OFF and says plainly what it will do before it does it.
+ *
+ * STATE, NEVER PROCESS: the caption names the outcome (an archive folder, a fresh log) and the one
+ * condition a player can act on (the game has to be closed). It does not mention gzip levels, file
+ * handles, or why the rename has to come first - that argument lives in src/main/log/archive.ts.
+ * The honest half is stated rather than hidden: rotating means the app's own history views start
+ * over, because they are re-read from the log every launch.
+ */
+function LogArchiveSetting(): JSX.Element {
+  const [prefs, patch] = useLogArchive()
+
+  return (
+    <Stack spacing={0.5} data-testid="pref-log-archive">
+      <FormControlLabel
+        control={
+          <Switch
+            size="small"
+            data-testid="pref-log-archive-enabled"
+            checked={prefs.enabled}
+            onChange={(e) => patch({ enabled: e.target.checked })}
+          />
+        }
+        label={<Typography variant="body2">Archive large log files</Typography>}
+      />
+      <Typography variant="caption" color="text.secondary">
+        {prefs.enabled
+          ? 'At startup, while EverQuest is closed, a character log this big is compressed into an Archive folder beside your logs, and a fresh empty log takes its place. Your Sky progress, inventory and gear plans are kept - loot, kill and leveling history are re-read from the log, so they start over.'
+          : 'Off. EverQuest appends to one log file forever, and this app re-reads all of it every time it starts.'}
+      </Typography>
+      {prefs.enabled ? (
+        <TextField
+          size="small"
+          type="number"
+          label="Archive at"
+          data-testid="pref-log-archive-threshold"
+          value={prefs.thresholdMb}
+          onChange={(e) => {
+            const n = Number(e.target.value)
+            if (Number.isFinite(n)) patch({ thresholdMb: n })
+          }}
+          slotProps={{
+            htmlInput: { min: MIN_ARCHIVE_THRESHOLD_MB, max: MAX_ARCHIVE_THRESHOLD_MB, step: 10 }
+          }}
+          sx={{ width: 160, mt: 0.5 }}
+          helperText="megabytes"
+        />
+      ) : null}
     </Stack>
   )
 }
@@ -294,6 +381,13 @@ export function perfSection(): PrefSection {
         keywords:
           'priority cpu processor yield game foreground below normal lag stutter freeze hitch fps performance smooth background scheduling',
         content: <YieldCpuSetting />
+      },
+      {
+        id: 'log-archive',
+        label: 'Log archiving',
+        keywords:
+          'log archive rotate rotation compress gzip zip size huge large startup slow boot launch replay history disk space cleanup',
+        content: <LogArchiveSetting />
       },
       {
         id: 'perf-hud',

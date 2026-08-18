@@ -12,6 +12,7 @@
 import { ipcRenderer } from 'electron'
 import { IPC } from '../shared/ipc'
 import type { PerfHudPrefs, PerfSample, StartupProfile } from '../shared/perf'
+import type { LogArchivePrefs } from '../shared/logArchive'
 import type { ProcessPriorityPrefs } from '../shared/processPriority'
 
 export const perfBridge = {
@@ -39,6 +40,12 @@ export const perfBridge = {
    *  actually stored. */
   setYieldToGame: (enabled: boolean): Promise<ProcessPriorityPrefs> =>
     ipcRenderer.invoke(IPC.processPrioritySet, enabled),
+  /** The persisted log-rotation switch (shared/logArchive.ts). OFF by default. */
+  getLogArchive: (): Promise<LogArchivePrefs> => ipcRenderer.invoke(IPC.logArchiveGet),
+  /** Merge-patch it. Main clamps the threshold and defaults the switch, so this resolves to what
+   *  was actually stored rather than to what was sent. */
+  setLogArchive: (patch: Partial<LogArchivePrefs>): Promise<LogArchivePrefs> =>
+    ipcRenderer.invoke(IPC.logArchiveSet, patch),
   /** The startup profile for the launch you are in (also written to disk for the next one). */
   getStartupProfile: (): Promise<StartupProfile> => ipcRenderer.invoke(IPC.perfGetStartup),
   /** Report the `rendererHydrated` startup phase — the one mark only the renderer can make.

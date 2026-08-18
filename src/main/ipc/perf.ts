@@ -27,6 +27,7 @@ import {
 import { getPerfHudPrefs, setPerfHudPrefs } from '../store'
 import { getProcessPriorityPrefs, setProcessPriorityPrefs } from '../storeProcessPriority'
 import { setYieldToGame } from '../processPriority'
+import { getLogArchivePrefs, setLogArchivePrefs } from '../storeLogArchive'
 import type { PerfHudPrefs } from '../../shared/perf'
 import type { ProcessPriorityPrefs } from '../../shared/processPriority'
 
@@ -57,6 +58,18 @@ export function registerPerfIpc(): void {
   ipcMain.handle(IPC.perfPrefsGet, () => getPerfHudPrefs())
 
   ipcMain.handle(IPC.processPriorityGet, () => getProcessPriorityPrefs())
+
+  ipcMain.handle(IPC.logArchiveGet, () => getLogArchivePrefs())
+
+  // The renderer supplies this one, so it is validated at the handler like every other such
+  // channel — except the validation is the store accessor's own normalizer rather than a typeof
+  // here, because the payload is a blob with a clamped numeric field. A non-object patch merges
+  // nothing and the stored value comes back unchanged.
+  ipcMain.handle(IPC.logArchiveSet, (_e, patch: unknown) =>
+    typeof patch === 'object' && patch !== null && !Array.isArray(patch)
+      ? setLogArchivePrefs(patch)
+      : getLogArchivePrefs()
+  )
 
   // VALIDATED AT THE HANDLER, never trusted because today's only caller is the app's own UI: a
   // non-boolean is not a guess, it leaves the pref exactly as it was.

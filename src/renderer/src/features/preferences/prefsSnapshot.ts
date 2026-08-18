@@ -36,6 +36,7 @@ import type { OverlayTextSizePrefs } from '@shared/overlayTextScale'
 import type { OverlayBgAlphaPrefs } from '@shared/overlayBgAlpha'
 import type { CloseToTrayPrefs } from '@shared/closeToTray'
 import type { PerfHudPrefs, StartupProfile } from '@shared/perf'
+import type { LogArchivePrefs } from '@shared/logArchive'
 import type { ProcessPriorityPrefs } from '@shared/processPriority'
 import type { ResistPrefs } from '@shared/resistPrefs'
 import type { TelemetryPayloadView } from '@shared/telemetry'
@@ -161,6 +162,10 @@ export interface PrefsSnapshot {
    *  to come through the gate: a switch whose default is `true` flashing OFF is the JOS-340
    *  defect wearing its loudest clothes. */
   processPriority: ProcessPriorityPrefs
+  /** Performance - log rotation (shared/logArchive.ts). OFF by default, so the SWITCH would not
+   *  flash; the THRESHOLD would (a stored 200 rendering as 50 for a frame), which is what puts
+   *  this behind the gate with the rest. */
+  logArchive: LogArchivePrefs
   /** Combat — which casters teach the resist profiles (JOS-385). ON by default, so it is here for
    *  the `processPriority` reason: a switch whose default is `true` flashing OFF is this gate's
    *  own defect. */
@@ -203,6 +208,7 @@ export interface PrefsReader {
   getPerfPrefs: () => Promise<PerfHudPrefs>
   getStartupProfile: () => Promise<StartupProfile>
   getProcessPriority: () => Promise<ProcessPriorityPrefs>
+  getLogArchive: () => Promise<LogArchivePrefs>
   getResistPrefs: () => Promise<ResistPrefs>
   getAppVersion: () => Promise<string>
   getUpdateStatus: () => Promise<UpdateStatus>
@@ -241,6 +247,7 @@ export async function readPrefsSnapshot(eq: PrefsReader): Promise<PrefsSnapshot>
     perfHud,
     startup,
     processPriority,
+    logArchive,
     resists,
     version,
     updateStatus,
@@ -268,6 +275,7 @@ export async function readPrefsSnapshot(eq: PrefsReader): Promise<PrefsSnapshot>
     eq.getPerfPrefs(),
     eq.getStartupProfile(),
     eq.getProcessPriority(),
+    eq.getLogArchive(),
     eq.getResistPrefs(),
     eq.getAppVersion(),
     eq.getUpdateStatus(),
@@ -311,6 +319,7 @@ export async function readPrefsSnapshot(eq: PrefsReader): Promise<PrefsSnapshot>
     perfHud,
     startup,
     processPriority,
+    logArchive,
     resists,
     version,
     updateStatus,

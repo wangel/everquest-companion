@@ -13,6 +13,7 @@ import type { OverlayBgAlphaPrefs } from '../shared/overlayBgAlpha'
 import type { CloseToTrayPrefs } from '../shared/closeToTray'
 import type { TelemetryPrefs } from '../shared/telemetry'
 import type { PerfHudPrefs } from '../shared/perf'
+import type { LogArchivePrefs } from '../shared/logArchive'
 import type { ProcessPriorityPrefs } from '../shared/processPriority'
 import type { ResistPrefs } from '../shared/resistPrefs'
 import type { GraphicsPrefs } from '../shared/graphicsPrefs'
@@ -217,6 +218,19 @@ export interface StoreShape {
    * `false` was a person's decision or yesterday's default written down (the 8→9 / 10→11 lesson).
    */
   processPriority?: ProcessPriorityPrefs
+  /**
+   * LOG ROTATION (shared/logArchive.ts) - archive a character log once it passes a size, so the
+   * startup fold stops re-reading years of it. `{ enabled: false, thresholdMb: 50 }`.
+   *
+   * ABSENT MEANS OFF, and off is exactly what every build before this one did to a user's logs, so
+   * this is another additive optional key on the carve-out above: no schema bump, no migration,
+   * `normalizeLogArchivePrefs` defaults every field. It is deliberately NOT the `processPriority`
+   * case - nothing here ever needs to tell a stored `false` from an inherited default, because
+   * both mean the same thing (do not touch the files) and the feature only ever acts on an
+   * explicit `true`. The accessors live in `storeLogArchive.ts` because store.ts is at the
+   * 400-code-line ceiling.
+   */
+  logArchive?: LogArchivePrefs
   /**
    * WHICH CASTERS TEACH THE RESIST PROFILES (schema migration 13→14; JOS-385,
    * shared/resistPrefs.ts). `{ includeNpcCasters: true }` — charmed pets and NPC casters count as
