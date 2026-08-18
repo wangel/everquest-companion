@@ -101,6 +101,7 @@ function stubReader(over: Partial<Record<keyof PrefsReader, unknown>> = {}): {
     // A switch whose compiled-in default is TRUE (JOS-366), stored FALSE — the flash this gate
     // exists to prevent, in the direction the other switches cannot express.
     getProcessPriority: answer('getProcessPriority', { yieldToGame: false }),
+    getLogArchive: answer('getLogArchive', { enabled: false, thresholdMb: 50 }),
     // The second of those (JOS-385), and stored FALSE for the same reason: the only person whose
     // resist-evidence value differs from the shipped one is the person who switched it off.
     getResistPrefs: answer('getResistPrefs', { includeNpcCasters: false }),
@@ -117,11 +118,11 @@ test('one read answers every card in the pane, and it snaps the text size to the
   const { reader, calls } = stubReader()
   const snap = await readPrefsSnapshot(reader)
 
-  // TWENTY-SIX reads, one batch (JOS-405 added the overlays' text size and its twelve per-kind
-  // values; JOS-407 the same pair for transparency). The number is not the claim; the claim is
-  // that the gate asks each question exactly once, so a pane that mounts does not stampede the
-  // store.
-  assert.equal(calls(), 26, 'every read fires exactly once')
+  // TWENTY-SEVEN reads, one batch (JOS-405 added the overlays' text size and its twelve per-kind
+  // values; JOS-407 the same pair for transparency; log archiving adds the twenty-seventh). The
+  // number is not the claim; the claim is that the gate asks each question exactly once, so a
+  // pane that mounts does not stampede the store.
+  assert.equal(calls(), 27, 'every read fires exactly once')
 
   // The overlays' size (JOS-405), which is TWO facts read together for the toast pair's reason:
   // the shared stepper and the twelve rows are one control group, and a frame where the size was
@@ -200,7 +201,7 @@ test('two mounts in one frame share ONE batch', async () => {
   resetPrefsSnapshotForTests()
   const { reader, calls } = stubReader()
   const [a, b] = await Promise.all([loadPrefsSnapshot(reader), loadPrefsSnapshot(reader)])
-  assert.equal(calls(), 26, 'not fifty-two')
+  assert.equal(calls(), 27, 'not fifty-four')
   assert.equal(a, b)
   resetPrefsSnapshotForTests()
 })

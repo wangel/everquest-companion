@@ -18,6 +18,7 @@
 // What remains here is the sequence those pieces must be assembled in, and the app lifecycle
 // that drives it. FOUR orderings are load-bearing and are called out at their call sites:
 // the first-import law, the epoch subscription being the LAST bus subscriber,
+import { rotateLogsBeforeTail } from './log/archiveStartup'
 // `registerSchemesAsPrivileged` running at module scope (before `ready`), and graphics safe mode
 // being applied at module scope for the same before-`ready` reason (graphics.ts).
 
@@ -314,7 +315,15 @@ if (!gotSingleInstanceLock) {
     // call: the composition root's own step is handing the session its work, and everything the
     // scan then does belongs to the phase that names it. A failed attach still marks the phase
     // (with no count) rather than leaving the profile forever incomplete.
-    void startTailing()
+    // LOG ROTATION FIRST, AND IN FRONT OF THE TAIL ON PURPOSE (log/archiveStartup.ts).
+    // If the user has asked for it and EverQuest is closed, an oversized character log is
+    // renamed into `Logs\Archive\` and replaced with an empty one BEFORE anything opens it —
+    // the tail must never have to survive its file moving underneath it. Only the renames are
+    // awaited (milliseconds, and only on the rare launch that rotates); the gzip that follows
+    // is carried on its own promise and never delays a start. A disabled preference — the
+    // default — resolves immediately without touching the disk.
+    void rotateLogsBeforeTail()
+      .then(() => startTailing())
       .then((res) => {
         markStartupPhase('replayDone', {
           eventsReplayed: res?.eventsReplayed ?? 0,

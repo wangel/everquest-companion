@@ -693,6 +693,14 @@ export const IPC = {
   // SAME call, so the pref and this session's processes can never disagree (the `perf:setEnabled`
   // discipline). A non-boolean leaves the pref alone. Arg: boolean. Returns ProcessPriorityPrefs.
   processPrioritySet: 'processPriority:setYield',
+  // renderer -> main: the persisted log-rotation prefs ({enabled, thresholdMb}). OFF by default -
+  // this feature moves a file inside the user's game install, so nothing acts without an explicit
+  // true. Returns LogArchivePrefs.
+  logArchiveGet: 'logArchive:get',
+  // renderer -> main: merge-patch them. The threshold is CLAMPED and the switch defaulted by
+  // `normalizeLogArchivePrefs` on the way to disk, so a malformed patch can never enable the
+  // feature or store an out-of-band size. Arg: Partial<LogArchivePrefs>. Returns LogArchivePrefs.
+  logArchiveSet: 'logArchive:set',
 
   // ---- graphics compatibility (JOS-40 — shared/graphicsPrefs.ts) ------------------------
   //
