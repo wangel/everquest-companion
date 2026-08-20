@@ -79,6 +79,7 @@ function buildPayload(req: ToastRequest, item: ToastItemCard | undefined, durati
   }
   if (req.subtitle) payload.subtitle = req.subtitle
   if (req.focus) payload.focus = req.focus
+  if (req.action) payload.action = req.action
   if (item) payload.item = item
   return payload
 }

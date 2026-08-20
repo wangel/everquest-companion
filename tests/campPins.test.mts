@@ -103,20 +103,60 @@ test('an experience line is CONSUMED by the death it precedes, never a later one
   assert.equal(m.snapshot(T0 + 101).state.prompt?.mob, 'Commander Windstream', 'the first kill still holds the slot')
 })
 
-test('A MOB THE CATALOG HAS COORDINATES FOR IS NEVER ASKED ABOUT', () => {
+test('A MOB THE CATALOG HAS COORDINATES FOR IS NEVER ASKED FOR A /loc', () => {
   // THE DEFECT THIS GATE EXISTS FOR. The owner answered a prompt for a ghoul supplier, and three
   // hours later noticed the wiki had placed it 14 units from where he stood - `MapMobPins` had been
   // drawing that pin the whole time. The app must never ask a player to hand-place a mark that is
   // already on screen. 432 of the 560 in-era named mobs are in this category (namedDb.ts).
   const guk = inZone('Lower Guk')
   feed(guk, death('the ghoul lord'))
-  assert.equal(guk.snapshot(T0 + 1).state.prompt, undefined, 'the wiki already placed it')
+  const placed = guk.snapshot(T0 + 1).state.prompt
+  assert.equal(placed?.needsLoc, false, 'the wiki already placed it')
+  // It is still asked ABOUT, because there is a second question - and this is the only one left.
+  assert.equal(placed?.offerWatch, true, 'a notable NPC nobody is watching yet')
 
-  // …and the 128 the wiki missed still ask. `Commander Windstream` is in Befallen's roster and the
-  // catalog has never heard of him, which is the whole remaining case for this feature.
+  // …and the 128 the wiki missed ask for the position too. `Commander Windstream` is in Befallen's
+  // roster and the catalog has never heard of him, which is the whole case for the `/loc` half.
   const bef = inZone('Befallen')
   feed(bef, death('Commander Windstream'))
-  assert.equal(bef.snapshot(T0 + 1).state.prompt?.mob, 'Commander Windstream')
+  assert.equal(bef.snapshot(T0 + 1).state.prompt?.needsLoc, true)
+})
+
+test('NOTHING LEFT TO ASK, NO CARD — a watched mob the wiki has already placed', () => {
+  // The state both gates are satisfied in, and the one that keeps the watch ask from turning the
+  // prompt into an alarm clock: a named you already watch, whose spawn the catalog states, is a
+  // mob this app has no question about. Before the watch ask existed this was the same test as
+  // `catalogHasCoords` alone.
+  const guk = inZone('Lower Guk')
+  guk.setWatched(['the ghoul lord'])
+  feed(guk, death('the ghoul lord'))
+  assert.equal(guk.snapshot(T0 + 1).state.prompt, undefined)
+})
+
+test('THE WATCH OFFER IS FOR NOTABLE NPCs ONLY, never the watch-list half', () => {
+  // The owner's whole constraint on this feature: "only for notable npcs / mobs - not trash". The
+  // roster is the entire gate. A mob that arms the prompt only because the USER watches it is by
+  // definition already watched, so there is nothing to offer either way - but the flag is asserted
+  // rather than reasoned about, because a future edit could make `arms` and the offer disagree.
+  const m = inZone()
+  m.setWatched(['Gorgalosk'])
+  feed(m, death('Gorgalosk'))
+  const p = m.snapshot(T0 + 1).state.prompt
+  assert.equal(p?.mob, 'Gorgalosk')
+  assert.equal(p?.offerWatch, false, 'trash the user watches is not a notable NPC')
+})
+
+test('GRANTING THE WATCH RETIRES THE OFFER, with no cancel channel', () => {
+  // How pressing the button makes the question go away: the IPC handler writes the list and calls
+  // `setWatched`, and the flags are RECOMPUTED per read rather than frozen at arm time. The card
+  // here has both questions live, so it survives the grant - with the offer withdrawn.
+  const bef = inZone('Befallen')
+  feed(bef, death('Commander Windstream'))
+  assert.equal(bef.snapshot(T0 + 1).state.prompt?.offerWatch, true)
+  bef.setWatched(['commander windstream'])
+  const after = bef.snapshot(T0 + 2).state.prompt
+  assert.equal(after?.offerWatch, false, 'granted')
+  assert.equal(after?.needsLoc, true, 'and the position is still wanted')
 })
 
 test('a WATCHED mob arms it even when the roster has never heard of it', () => {
@@ -279,4 +319,40 @@ test('respawnWithWatch: a customSec is carried only when the caller passes one',
   const empty = normalizeRespawnPrefs({})
   assert.equal(respawnWithWatch(empty, 'a', 'a').watches[0].customSec, undefined)
   assert.equal(respawnWithWatch(empty, 'a', 'a', 540).watches[0].customSec, 540)
+})
+
+
+test('AN IGNORED WATCH OFFER IS A NO, and it does not come back next pop', () => {
+  // MEASURED on the owner's log: QUIET is five minutes and a Guk named pops every ten, so an
+  // unanswered offer returned on EVERY spawn - `a ghoul supplier` asked five times in forty
+  // minutes at one camp. QUIET is the right clock for "where does it camp?" (a question about the
+  // corpse in front of you) and the wrong one for "do you want a clock on this?" (a question about
+  // the mob, whose answer does not change because it respawned).
+  const guk = inZone('Lower Guk')
+  feed(guk, death('the ghoul lord'))
+  assert.equal(guk.snapshot(T0 + 1).state.prompt?.offerWatch, true)
+
+  // Ignored: the show window closes with no answer.
+  guk.onTick(T0 + CAMP_SHOW_MS + 1)
+  assert.equal(guk.snapshot(T0 + CAMP_SHOW_MS + 2).state.prompt, undefined)
+
+  // It pops again, well past QUIET. Nothing is asked: the only question it had was answered by
+  // silence, and this mob's position is something the catalog already states.
+  const later = T0 + CAMP_QUIET_MS + CAMP_SHOW_MS + 60_000
+  feed(guk, death('the ghoul lord', later))
+  assert.equal(guk.snapshot(later + 1).state.prompt, undefined, 'asked once, told no')
+})
+
+test('…but declining the WATCH does not silence the POSITION question', () => {
+  // The two questions are about different things, so a no to one is not a no to the other. A mob
+  // the wiki never placed still has something only the player can supply.
+  const bef = inZone('Befallen')
+  feed(bef, death('Commander Windstream'))
+  bef.onTick(T0 + CAMP_SHOW_MS + 1)
+
+  const later = T0 + CAMP_QUIET_MS + CAMP_SHOW_MS + 60_000
+  feed(bef, death('Commander Windstream', later))
+  const again = bef.snapshot(later + 1).state.prompt
+  assert.equal(again?.needsLoc, true, 'the wiki still has not placed him')
+  assert.equal(again?.offerWatch, false, 'but the watch was declined')
 })

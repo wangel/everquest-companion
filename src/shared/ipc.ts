@@ -797,6 +797,16 @@ export const IPC = {
   // running module and pushes (`registry.flushNow`) exactly as the setter does. Returns whether
   // anything was actually watching that name — false is a no-op, not a failure.
   respawnUnwatch: 'respawn:unwatch',
+  // renderer/overlay -> main: "START watching this mob" — the exact counterpart of the channel
+  // above, and it exists for the identical reason stated there: the surfaces that call it know a
+  // MOB, not a list. The caller that forced it is the celebration overlay's watch ask, which runs
+  // in a window that holds no prefs at all and must not be handed the whole watch list to rewrite.
+  //
+  // Payload is the mob as the LOG printed it (not a key): main canonicalizes with `idKey`, exactly
+  // as an answered camp prompt does, so a name folded off a death line and a row's key land on one
+  // entry. ALREADY WATCHED IS A NO-OP reported as `false` — re-writing the entry would discard a
+  // `customSec` the player typed, and "I want a clock on this" never means "and forget my number".
+  respawnWatch: 'respawn:watch',
 
   // ---- per-mob resist profiles (JOS-382 — docs/plans/resist-mining.md) -------------------
   //

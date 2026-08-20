@@ -261,6 +261,20 @@ const overlayApi = {
   focusApp: (focus: AppFocus): void => ipcRenderer.send(IPC.focusView, focus),
 
   /**
+   * ANSWER A CARD'S WATCH ASK: "yes, give me a respawn clock on this mob."
+   *
+   * THE ONLY WRITE THIS WINDOW CAN PERFORM, and deliberately the narrowest possible one — a single
+   * mob NAME, on a channel that can do nothing else. The alternative that was rejected was a
+   * generic action bus keyed by channel name, which would have turned the least-privileged window
+   * in the app into a place any IPC could be reached from (shared/toast.ts carries the argument).
+   *
+   * It RESOLVES so the card can show a receipt it actually earned: `false` means nothing changed —
+   * the mob was already watched, which is what a second press looks like — and the card says
+   * "watching" either way, because either way it now is.
+   */
+  watchMob: (mob: string): Promise<boolean> => ipcRenderer.invoke(IPC.respawnWatch, mob),
+
+  /**
    * TOAST (docs/plans/celebration-toasts.md): one finished card to render, pushed by main.
    * Self-contained by law — the overlay times and dismisses it locally and fetches nothing.
    */

@@ -22,6 +22,8 @@ import {
   TOAST_MAX_LINES,
   TOAST_MAX_TEXT,
   TOAST_MIN_DURATION_MS,
+  TOAST_WATCHING_LABEL,
+  TOAST_WATCH_LABEL,
   introToastPayload,
   normalizeToastConfig,
   toastActionLabel,
@@ -309,4 +311,69 @@ test('`introduced` reads false for every store written before it existed — onl
   assert.equal(normalizeToastConfig({ introduced: 'yes' }).introduced, false)
   assert.equal(normalizeToastConfig({ introduced: 1 }).introduced, false)
   assert.equal(normalizeToastConfig({ introduced: true }).introduced, true)
+})
+
+
+// ---------------------------------------------------------------------------------------------
+// THE ANSWER BUTTON — a card that asks a question, taking its yes.
+//
+// This is the first payload field that makes the overlay WRITE something instead of navigating,
+// so the boundary matters more here than anywhere else in the file: the celebration window has the
+// smallest preload in the app on purpose, and an action bus keyed by channel name would have
+// undone that. The union has one verb and the validator rebuilds it field by field.
+
+test('a watch ask survives verbatim, mob and all', () => {
+  const req = validateToastRequest({
+    id: 'camp:1',
+    kind: 'campPrompt',
+    title: 'Commander Windstream down',
+    action: { kind: 'watchMob', mob: 'Commander Windstream' }
+  })
+  assert.deepEqual(req?.action, { kind: 'watchMob', mob: 'Commander Windstream' })
+})
+
+test('an UNKNOWN VERB is dropped — the card draws with no button, never an unnamed one', () => {
+  // The whole reason the union is closed. A card that rendered a button for a verb this module
+  // has never heard of would be a control whose effect nothing in the repo states.
+  for (const action of [
+    { kind: 'deleteCharacter', mob: 'Commander Windstream' },
+    { kind: 'watchMob' }, // no mob to watch
+    { kind: 'watchMob', mob: '   ' },
+    { mob: 'Commander Windstream' },
+    'watchMob',
+    null
+  ]) {
+    const req = validateToastRequest({ id: 'x', kind: 'campPrompt', title: 't', action })
+    assert.equal(req?.action, undefined, JSON.stringify(action))
+  }
+})
+
+test('the mob name on an action is CAPPED like every other string that crosses', () => {
+  const req = validateToastRequest({
+    id: 'x',
+    kind: 'campPrompt',
+    title: 't',
+    action: { kind: 'watchMob', mob: 'z'.repeat(TOAST_MAX_TEXT * 3) }
+  })
+  assert.equal(req?.action?.mob.length, TOAST_MAX_TEXT)
+})
+
+test('an action carries NO label — the wording is this module’s, not the caller’s', () => {
+  // Same rule as TOAST_INTRO_BODY and toastActionLabel: a string this small is still a promise the
+  // app makes, and a producer-supplied caption is how two cards end up describing one button two
+  // ways. The producer says WHICH MOB; the words are pinned here.
+  const req = validateToastRequest({
+    id: 'x',
+    kind: 'campPrompt',
+    title: 't',
+    action: { kind: 'watchMob', mob: 'Gorgalosk', label: 'Do the thing' }
+  })
+  assert.deepEqual(req?.action, { kind: 'watchMob', mob: 'Gorgalosk' })
+})
+
+test('the button states the CONSEQUENCE, and its receipt states what now holds', () => {
+  // Read cold, over the game: "Watch" alone is the Timers tab's word for a row you are already
+  // looking at, and could mean anything up to a screenshot on a card floating over EverQuest.
+  assert.match(TOAST_WATCH_LABEL, /respawn/i)
+  assert.match(TOAST_WATCHING_LABEL, /watching/i)
 })

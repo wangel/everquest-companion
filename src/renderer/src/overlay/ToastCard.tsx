@@ -36,7 +36,15 @@
 // button that closes the overlay for good.
 
 import { type CSSProperties, type JSX, type MouseEvent, useEffect, useState } from 'react'
-import { TOAST_INTRO_BODY, toastActionLabel, type ToastItemCard, type ToastPayload } from '@shared/toast'
+import {
+  TOAST_INTRO_BODY,
+  TOAST_WATCHING_LABEL,
+  TOAST_WATCH_LABEL,
+  toastActionLabel,
+  type ToastAction,
+  type ToastItemCard,
+  type ToastPayload
+} from '@shared/toast'
 import { TOAST_ENTER_MS, TOAST_EXIT_MS } from './toastQueue'
 
 const GOLD = '#d9b25f'
@@ -277,6 +285,47 @@ function motionStyle(entering: boolean, exiting: boolean): CSSProperties {
   }
 }
 
+/**
+ * THE ANSWER BUTTON — a card that asked a question, taking its yes.
+ *
+ * IT REUSES `CardAction`, not a new control: the reader has met that button on the level-up card,
+ * and a second visual vocabulary in the window that is supposed to be the cheapest thing on screen
+ * would be a cost paid for nothing. What differs is where the click goes — `focusApp` takes you
+ * somewhere, this one CHANGES something and you stay where you are, which is the entire point for
+ * a player standing on a corpse.
+ *
+ * IT BECOMES ITS OWN RECEIPT. Once the write lands the button is replaced, in place, by a line
+ * saying what now holds. That is the same trick the camp prompt plays with its toast id — the
+ * question turns into its confirmation rather than vanishing and leaving the player wondering
+ * whether the click registered.
+ *
+ * A FAILED WRITE SAYS NOTHING FALSE. `watchMob` resolving `false` means "already watched", which
+ * is what a second press looks like and is still a true "watching"; only a THROWN error (main gone,
+ * channel refused) leaves the button up to be pressed again. The card never claims a clock it does
+ * not have.
+ */
+function WatchAnswer({ action }: { action: ToastAction }): JSX.Element {
+  const [taken, setTaken] = useState(false)
+  if (taken) {
+    return (
+      <div data-testid="toast-watching" style={{ color: MUTED, fontSize: 12, marginTop: 9 }}>
+        {TOAST_WATCHING_LABEL}
+      </div>
+    )
+  }
+  return (
+    <CardAction
+      label={TOAST_WATCH_LABEL}
+      onClick={() => {
+        void window.eqOverlay
+          .watchMob(action.mob)
+          .then(() => setTaken(true))
+          .catch(() => undefined)
+      }}
+    />
+  )
+}
+
 export function ToastCard({
   payload,
   exiting,
@@ -342,6 +391,10 @@ export function ToastCard({
       {/* The card's own link, made visible (JOS-334). It renders only where the CARD is the click
           target, which is the same condition that made the pointer cursor appear. */}
       {action && onCardClick && <CardAction label={action} onClick={onCardClick} />}
+      {/* …and the OTHER kind of button: one that answers instead of navigating. A card carries at
+          most one, because `campPrompt` names no focus on purpose (a click must not take you away
+          from the corpse) and nothing else names an action. */}
+      {payload.action && <WatchAnswer action={payload.action} />}
       {/* Nothing else is clickable: a toast says a thing happened, and the reward block is the
           one place that promises to take you somewhere. */}
       {payload.item && <RewardBlock item={payload.item} onClick={onOpen} />}

@@ -90,14 +90,37 @@ function persist(pins: CampPins, answered: CampPin): void {
     logError('main:campPins', { message: 'could not write camp pins', err })
   }
   try {
-    const key = idKey(answered.mob)
-    const prefs = getRespawnPrefs()
-    if (prefs.watches.some((w) => w.key === key)) return
-    const next = setRespawnPrefs(respawnWithWatch(prefs, key, answered.mob))
-    respawnModule.setPrefs(next)
-    campPinsModule.setWatched(next.watches.map((w) => w.key))
-    registry.flushNow()
+    startWatching(answered.mob)
   } catch (err) {
     logError('main:campPins', { message: 'could not start the clock for an answered camp', err })
   }
+}
+
+/**
+ * PUT ONE MOB ON THE WATCH LIST — the whole write, in one place, for both callers.
+ *
+ * It was inline in `persist` until the celebration overlay grew an answer button (`respawn:watch`),
+ * and two callers of a four-step write is exactly how a step goes missing in one of them. The four:
+ *
+ *   1. PERSIST through `setRespawnPrefs`, the same normalizer the store reader uses.
+ *   2. APPLY LIVE to the running respawn module — skipping this leaves the session's clocks
+ *      ignorant of a watch the FILE already has, the shape of bug a restart "fixes".
+ *   3. TELL THE CAMP MODULE, so the prompt stops offering to watch a mob that now IS watched.
+ *   4. PUSH NOW (`registry.flushNow`) — a watch edit advances no log seq (JOS-87), so on an idle
+ *      log nothing else would ever carry it to the surfaces.
+ *
+ * ALREADY WATCHED IS LEFT ALONE and reported `false`. `respawnWithWatch` REPLACES an entry, and
+ * replacing this one would discard a `customSec` the player typed: "I care about this mob" never
+ * means "and forget the respawn time I told you".
+ */
+export function startWatching(mob: string): boolean {
+  const key = idKey(mob)
+  if (key === '') return false
+  const prefs = getRespawnPrefs()
+  if (prefs.watches.some((w) => w.key === key)) return false
+  const next = setRespawnPrefs(respawnWithWatch(prefs, key, mob))
+  respawnModule.setPrefs(next)
+  campPinsModule.setWatched(next.watches.map((w) => w.key))
+  registry.flushNow()
+  return true
 }

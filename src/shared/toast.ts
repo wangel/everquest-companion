@@ -132,6 +132,42 @@ export interface ToastItemCard {
   lines: string[]
 }
 
+// ---- an ANSWERABLE card (the watch ask) -----------------------------------------------
+//
+// A CARD THAT ASKS A YES/NO QUESTION NEEDS A YES. The camp prompt's answer arrives through the
+// GAME — you type `/loc` and the log states a position — which is the best possible channel for
+// that question, because only the player can supply the fact. "Do you want a respawn clock on
+// this mob?" has no such line: EverQuest has no `/watch`, so the answer has to be a click.
+//
+// ONE CLOSED VERB, NOT A GENERIC ACTION BUS. The temptation is a payload that names a channel and
+// an argument, which would make the overlay a place arbitrary IPC can be reached from — the
+// opposite of what `validateToastRequest`'s header says this boundary is for. So the union has
+// exactly one member and the overlay's preload exposes exactly one door for it
+// (`window.eqOverlay.watchMob`, IPC `respawn:watch`), which is the same single-mob write the
+// Timers tab's Unwatch button has always had a counterpart to.
+//
+// THE LABEL IS NOT IN THE PAYLOAD. A producer says WHICH MOB; what the button reads is this
+// module's business, so the wording is pinned by a test and cannot drift per caller.
+
+/** The one thing a card may ask you to press. Closed union — see the note above. */
+export interface ToastAction {
+  kind: 'watchMob'
+  /** The mob as the LOG printed it. Main folds it to a watch key and stores this as the display. */
+  mob: string
+}
+
+/**
+ * The word on the answer button.
+ *
+ * IT STATES THE CONSEQUENCE, not the verb: `Watch` alone is what the Timers tab says beside a row
+ * the reader is already looking at, but a card over the game is read cold and "watch" could mean
+ * anything up to a screenshot. What pressing it buys you is a respawn countdown.
+ */
+export const TOAST_WATCH_LABEL = 'Watch for respawn'
+
+/** What the card says instead of the button once the answer has been taken. */
+export const TOAST_WATCHING_LABEL = 'Watching - respawn clock started'
+
 /** One celebration, as the toast overlay receives it. */
 export interface ToastPayload {
   /** dedupe / eviction key — a repeat id refreshes the card already on screen */
@@ -147,6 +183,8 @@ export interface ToastPayload {
   focus?: AppFocus
   /** how long the card holds before it starts leaving. Absent ⇒ the config's duration. */
   durationMs?: number
+  /** an answer the card can take in place, drawn as a button. See `ToastAction`. */
+  action?: ToastAction
 }
 
 /**
@@ -255,6 +293,19 @@ const FOCUS_VIEWS: AppFocusView[] = ['mobs', 'posky', 'leveling']
 /** Levels the game can state. A focus asking for level 0 or 900 is a bug, not a destination. */
 const MAX_FOCUS_LEVEL = 200
 
+/**
+ * Validate an answer button. Rebuilt field by field like `validFocus`, so what reaches the overlay
+ * is this vocabulary and nothing the asking window invented — an unknown verb is DROPPED and the
+ * card simply draws without a button, never with one that does something unnamed.
+ */
+function validAction(v: unknown): ToastAction | undefined {
+  if (typeof v !== 'object' || v === null) return undefined
+  const o = v as Record<string, unknown>
+  if (o.kind !== 'watchMob') return undefined
+  const mob = cappedText(o.mob)
+  return mob === undefined ? undefined : { kind: 'watchMob', mob }
+}
+
 function cappedText(v: unknown, max = TOAST_MAX_TEXT): string | undefined {
   if (typeof v !== 'string') return undefined
   const t = v.trim()
@@ -302,18 +353,30 @@ export function validateToastRequest(input: unknown): ToastRequest | null {
     ? (o.kind as ToastKind)
     : null
   if (!id || !title || !kind) return null
-  const durationMs = positiveInt(o.durationMs)
   const out: ToastRequest = { id, kind, title }
+  addOptional(out, o)
+  return out
+}
+
+/**
+ * The optional half of a request, field by field. Split from the validator above ONLY to keep it
+ * under the complexity ceiling — every branch is still "this field survives or it does not", and
+ * an unknown property still never reaches `out`, because `out` is only ever assigned the names
+ * spelled here.
+ */
+function addOptional(out: ToastRequest, o: Record<string, unknown>): void {
   const subtitle = cappedText(o.subtitle)
   if (subtitle) out.subtitle = subtitle
   const itemName = cappedText(o.itemName)
   if (itemName) out.itemName = itemName
   const focus = validFocus(o.focus)
   if (focus) out.focus = focus
+  const action = validAction(o.action)
+  if (action) out.action = action
+  const durationMs = positiveInt(o.durationMs)
   if (durationMs !== undefined) {
     out.durationMs = Math.min(TOAST_MAX_DURATION_MS, Math.max(TOAST_MIN_DURATION_MS, durationMs))
   }
-  return out
 }
 
 // ---- the item card's stat lines -------------------------------------------------------

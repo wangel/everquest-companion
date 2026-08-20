@@ -28,6 +28,7 @@ import { IPC } from '../../shared/ipc'
 import { respawnWithoutWatch } from '../../shared/respawn'
 import { getRespawnPrefs, setRespawnPrefs } from '../storeRespawn'
 import { registry, respawnModule } from '../pipeline'
+import { startWatching } from '../log/campPersist'
 
 /**
  * Longest row id the confirm handler will look at. A row id is `<zone key>::<mob key>` and both
@@ -43,6 +44,13 @@ const MAX_ROW_ID = 160
  * place. Same rule as `MAX_ROW_ID` above: the refusal belongs at the door.
  */
 const MAX_MOB_KEY = 64
+
+/**
+ * Longest mob NAME the watch handler will look at. Wider than the key above because what arrives
+ * here is the log's own spelling before canonicalization, and narrow enough that nothing which
+ * could be an EverQuest name is refused.
+ */
+const MAX_MOB_NAME = 96
 
 export function registerRespawnIpc(): void {
   ipcMain.handle(IPC.respawnGet, () => getRespawnPrefs())
@@ -72,6 +80,24 @@ export function registerRespawnIpc(): void {
     respawnModule.setPrefs(setRespawnPrefs(next))
     registry.flushNow()
     return true
+  })
+  /**
+   * START WATCHING ONE MOB — `respawnUnwatch`'s counterpart, and its argument applies unchanged:
+   * the caller knows a mob, not a list. What forced it into existence is a surface that could not
+   * hold the list even if it wanted to — the celebration overlay's watch ask runs in a window whose
+   * preload is deliberately a fraction of the app's bridge.
+   *
+   * THE FOUR DUTIES ARE `startWatching`'s, not this handler's, because an answered camp prompt
+   * performs the identical write from main's own side (log/campPersist.ts). Two spellings of a
+   * four-step write is how a step goes missing in one of them.
+   *
+   * The payload is a NAME as the log printed it, not a key: main canonicalizes. Capped at the door
+   * on the same reasoning as `MAX_MOB_KEY` above — a name long enough to matter is already a bug —
+   * and `false` means "nothing changed", which is what pressing the button twice looks like.
+   */
+  ipcMain.handle(IPC.respawnWatch, (_e, mob: unknown) => {
+    if (typeof mob !== 'string' || mob.length === 0 || mob.length > MAX_MOB_NAME) return false
+    return startWatching(mob)
   })
   /**
    * CONFIRM A SIGHTING (round 3). Two of the setter's three duties apply and the third does not:

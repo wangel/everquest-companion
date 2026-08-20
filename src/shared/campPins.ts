@@ -153,8 +153,28 @@ export const CAMP_SHOW_MS = 90_000
 /** QUIET: after an ignored prompt, that mob asks nothing again for this long. */
 export const CAMP_QUIET_MS = 300_000
 
+/**
+ * WHAT A CARD IS ASKING FOR. Two independent questions can be raised by one kill, and the card has
+ * to word itself from the answer to both:
+ *
+ *   needsLoc    the catalog states no coordinates for this mob, so where it camps is unknown and
+ *               only a `/loc` can supply it. This is the original question.
+ *   offerWatch  the mob is on the wiki's NOTABLE list and the player is not watching it, so there
+ *               is a respawn clock to be had for one click. NOTABLE ONLY, never the watch-list
+ *               half of `arms`: offering to watch a mob you already watch is nonsense, and
+ *               offering it for trash would be the alarm clock with no off switch that the module
+ *               header refuses. Trash cannot reach this - `isNamedMob` is the whole gate.
+ *
+ * A prompt is raised only while at least one is true, and it STOPS being raised the moment both go
+ * false — which is how pressing the button makes the ask go away without a cancel channel.
+ */
+export interface CampAsk {
+  needsLoc: boolean
+  offerWatch: boolean
+}
+
 /** The prompt the app is showing, if any — the whole of what a surface needs to draw one. */
-export interface CampPrompt {
+export interface CampPrompt extends CampAsk {
   mob: string
   zone: string
   /** When the mob died. The card counts down from here + CAMP_SHOW_MS. */
@@ -192,8 +212,8 @@ export function armIsLive(arm: CampArm | null, now: number): boolean {
 export interface CampSnap {
   /** Every camp this character has pinned. */
   pins: CampPins
-  /** The prompt to draw right now, if the grace has passed and the show window has not closed. */
-  prompt?: { mob: string; zone: string; killedTs: number }
+  /** The prompt to draw right now, if the show window has not closed and something is still asked. */
+  prompt?: CampPrompt
   /** The zone the fold stands in, so a surface can show this zone's camps without a second source. */
   zone: string | null
 }
