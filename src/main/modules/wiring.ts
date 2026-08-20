@@ -47,6 +47,7 @@ import { ResistModule, type ResistLedgerSeam } from '../resist/module'
 import type { EqModule } from './types'
 import { buildTimerRows } from '../../shared/buffTimers'
 import type { LogEvent } from '../../shared/logEvents'
+import type { HistoryBucket } from '../../shared/logHistory'
 import type { AlertDef } from '../../shared/types'
 import type { BuffTrustPrefs } from '../../shared/buffTrust'
 import type { RespawnPrefs } from '../../shared/respawn'
@@ -58,6 +59,14 @@ export interface ModuleWiringDeps extends ConsiderDeps, EventFeedDeps {
   resistLedger?: ResistLedgerSeam
   /** The user's alert definitions (the store owns them; the module is kept in sync by setDefs). */
   alertDefs?: AlertDef[]
+  /**
+   * What was recovered from ARCHIVED logs (shared/logHistory.ts) — loot, the four leveling ledgers
+   * and the kill map, merged across every `archive:*` bucket and NEVER including `live`. Seeded
+   * into the three modules that own those shapes, before the fold, exactly like `respawnPrefs`: a
+   * second input that is not the log. Absent ⇒ nothing has been archived and the fold is the whole
+   * truth, which is every machine that has not turned archiving on.
+   */
+  archivedHistory?: HistoryBucket
   /**
    * Observed-message counts to seed the miner with, in merge order: the committed baseline, then
    * the user's persisted buckets. Each carries the SOURCE KEY its counts belong to (JOS-231) —
@@ -172,6 +181,14 @@ export function createModules(deps: ModuleWiringDeps = {}): ModuleWiring {
   // is uncapped by contract (the AA identity needs the whole history) and this one is a ring.
   const progression = new ProgressionModule()
   const leveling = new LevelingModule()
+  // THE ARCHIVED SEED, before a single event is folded. Only these three modules carry history a
+  // rotation can take away; the rest either persist elsewhere (Sky, inventory) or are bounded
+  // recent-window analytics that were never meant to span archives (progression).
+  if (deps.archivedHistory) {
+    loot.setArchived(deps.archivedHistory.loot)
+    leveling.setArchived(deps.archivedHistory)
+    kills.setArchived(deps.archivedHistory.kills)
+  }
   const character = new CharacterModule()
   // WHEN THE PLAYER LAST EXPORTED EACH DUMP (JOS-128) — the one fact the inventory baseline
   // rule needs, folded from `Outputfile Complete: <file>`. Surface-free: main reads it directly

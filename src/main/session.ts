@@ -22,6 +22,13 @@ import {
   resolveEqDir,
   tailSurvivesRootChange
 } from './log/config'
+import {
+  markHistoryDirty,
+  persistLiveHistory,
+  seedArchivedHistory,
+  startHistoryWrites,
+  stopHistoryWrites
+} from './log/historyPersist'
 import { Tailer } from './log/Tailer'
 import { parseEvent, parseLine } from './log/parser'
 import { installCharacterName } from './log/rulesets'
@@ -265,6 +272,10 @@ function resetWorldFor(ref: CharacterRef): void {
   // and survives `reset()`; the counts THIS character's log accounts for are about to be
   // re-stated in full, so its bucket is discarded and re-filed rather than added to.
   resistModule.beginSource(characterId(ref))
+  // WHAT SURVIVES A ROTATION (shared/logHistory.ts). Beside the two buckets above and for the same
+  // JOS-231 reason: it is per character, it must be in place before the scan folds a single line,
+  // and it seeds the ARCHIVED buckets ONLY — `live` is what the scan is about to re-derive.
+  seedArchivedHistory(ref)
   epoch.reset()
   // The offline-gap detector is per-LOG state (a rolling window of recent timestamps + the
   // pending camp), so it resets alongside the epoch detector: a new character's first login
@@ -327,6 +338,11 @@ function startTailer(logPath: string, startOffset: number): void {
       seq++
       noteParsed(1)
       bus.emit(ev, true)
+      // MOMENT 2 OF 3 is a TIMER, and this is only its dirty flag — the write itself never happens
+      // on the line that caused it. Marking here rather than inside the three modules keeps them
+      // ignorant of persistence entirely, which is the property that lets `npm test` fold them
+      // with no store in sight.
+      markHistoryDirty()
     }
     notifyCombatActivity() // FIX 4: throttled push so the meter refreshes sub-second
   })
@@ -542,6 +558,12 @@ export async function tailCharacter(ref: CharacterRef): Promise<TailResult> {
     } mobs, ${lvlState.levels.length} level-ups, ${lvlState.aaGains.length} AA gains, ${lvlState.aaSpends.length} AA buys.`
   )
 
+  // MOMENT 1 OF 3 (log/historyPersist.ts): one write the instant the historical fold is done. It
+  // captures essentially the whole history at once, which is what makes a crash later in the
+  // session cost minutes instead of everything.
+  persistLiveHistory(true)
+  startHistoryWrites()
+
   startTailer(ref.logPath, scan.endOffset)
   startHeartbeat()
 
@@ -694,6 +716,10 @@ export function markTailPosition(): void {
  */
 export function stopSession(): void {
   markTailPosition()
+  // MOMENT 3 OF 3: the orderly exit. `markTailPosition`'s own seam, because both answer "what did
+  // this session learn" and both are worthless if they land after the tail is torn down.
+  stopHistoryWrites()
+  persistLiveHistory(true)
   void tailer?.stop()
   inventoryWatch?.close()
   stopWatchingForFirstLog()

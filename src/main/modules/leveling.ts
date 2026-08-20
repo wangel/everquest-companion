@@ -17,6 +17,7 @@ import type {
   LevelingDelta,
   LevelingSnap
 } from '../../shared/types'
+import { mergeRows } from '../../shared/logHistory'
 
 export class LevelingModule implements EqModule<LevelingSnap, LevelingDelta> {
   readonly id = 'leveling'
@@ -24,11 +25,38 @@ export class LevelingModule implements EqModule<LevelingSnap, LevelingDelta> {
   private aaGains: AAEvent[] = []
   private aaSpends: AASpendEvent[] = []
   private aaPotions: AAPotionEvent[] = []
+  /**
+   * The four ledgers as they stood in logs that have been ARCHIVED away (shared/logHistory.ts).
+   * Held apart from the live arrays for the reason loot.ts states: `snapshot()` serves them merged
+   * so the tab shows a whole history, `liveSnap()` serves the live arrays alone so the persisted
+   * `live` bucket describes only bytes the next fold will read again.
+   */
+  private archived: LevelingSnap = { levels: [], aaGains: [], aaSpends: [], aaPotions: [] }
   private seq = 0
   private pLevels: LevelEvent[] = []
   private pGains: AAEvent[] = []
   private pSpends: AASpendEvent[] = []
   private pPotions: AAPotionEvent[] = []
+
+  /** Seed the ledgers recovered from archived logs. Set once at wiring, before the fold. */
+  setArchived(snap: LevelingSnap): void {
+    this.archived = {
+      levels: [...snap.levels],
+      aaGains: [...snap.aaGains],
+      aaSpends: [...snap.aaSpends],
+      aaPotions: [...snap.aaPotions]
+    }
+  }
+
+  /** ONLY what this session's fold produced - what the persisted `live` bucket must contain. */
+  liveSnap(): LevelingSnap {
+    return {
+      levels: this.levels,
+      aaGains: this.aaGains,
+      aaSpends: this.aaSpends,
+      aaPotions: this.aaPotions
+    }
+  }
 
   reset(): void {
     this.levels = []
@@ -55,6 +83,9 @@ export class LevelingModule implements EqModule<LevelingSnap, LevelingDelta> {
         this.aaGains = []
         this.aaSpends = []
         this.aaPotions = []
+        // …and the archived ledgers too: a rebirth disowns everything before the boundary,
+        // whichever log it was read out of (loot.ts carries the same guard and the same note).
+        this.archived = { levels: [], aaGains: [], aaSpends: [], aaPotions: [] }
         this.pLevels = []
         this.pGains = []
         this.pSpends = []
@@ -93,10 +124,10 @@ export class LevelingModule implements EqModule<LevelingSnap, LevelingDelta> {
     return {
       seq: this.seq,
       state: {
-        levels: this.levels,
-        aaGains: this.aaGains,
-        aaSpends: this.aaSpends,
-        aaPotions: this.aaPotions
+        levels: mergeRows([this.archived.levels, this.levels]),
+        aaGains: mergeRows([this.archived.aaGains, this.aaGains]),
+        aaSpends: mergeRows([this.archived.aaSpends, this.aaSpends]),
+        aaPotions: mergeRows([this.archived.aaPotions, this.aaPotions])
       }
     }
   }
