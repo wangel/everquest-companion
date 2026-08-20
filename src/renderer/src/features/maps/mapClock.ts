@@ -1,30 +1,51 @@
-// THE COUNTDOWN, AS THE MAP SAYS IT — one spelling for every mark on the surface.
+// THE COUNTDOWN, AS THE MAP SAYS IT — WHETHER to draw one, in the app's own words.
 //
-// Two layers draw a clock now (the wiki pin for a watched mob, and a camp you pinned yourself), and
-// a third would be along eventually. `respawnReading` in shared/respawn.ts is where a countdown is
-// DERIVED and stays there; this is only how the derived number is worded, kept in one place for the
-// reason the Timers tab and the respawn overlay already share theirs: two spellings of `2m 14s` is
-// two answers to the question the whole feature exists to answer.
+// THE WORDING IS NOT THIS FILE'S ANY MORE, and that was a real defect rather than untidiness. This
+// module used to spell its own `2m 14s` / `due`, which made the map the ONLY surface with a private
+// clock vocabulary: `shared/respawn.ts`'s `respawnClockLabel` is where `UP`, `due 5m ago`,
+// `due long ago` and `awaiting next death` live, and the Timers tab and the respawn overlay both
+// read it. The two disagreed in the way that matters - the Timers tab said `due long ago` for a
+// three-hour-old estimate while the pin beside it said a flat `due`, indistinguishable from a mob
+// that popped thirty seconds ago. A reporter hit exactly that and read it as a broken clock.
+//
+// So this file now decides ONE thing: whether the map should say anything at all.
+//
+// A MAP IS A PLACE-FINDER FIRST (owner's ruling). The orange pin's whole job is "something spawns
+// here", and a clock is a second claim laid on top of it. Once that claim has stopped meaning
+// anything the clock comes OFF and the pin goes back to being a pin - because the alternative is
+// what every zone would look like after a week of play: a screen of `due long ago` with the
+// locations buried under it. A stale clock is not information, it is furniture.
+//
+// So a clock is drawn only while it still says something:
+//   * the mob was SEEN — `UP`, the strongest thing the log ever says, and never inferred;
+//   * an estimate is running or recently elapsed — `2m 14s`, `due 5m ago`;
+// and NOT when the reading is `stale` (the estimate is long gone) or when there is no estimate at
+// all (a mob killed once has no gap to learn from - a death→death gap needs two deaths).
 //
 // `due`, NEVER `spawned` (law 13, and the respawn header states it at length). The estimate
 // elapsing is a fact about the ESTIMATE; whether the mob is standing there is something the log
 // has not said and this app must not claim.
-//
-// NULL WHEN THERE IS NO ESTIMATE, so a caller falls back to the name alone. A mob killed once has
-// no gap to learn from - a death-to-death gap needs two deaths - and inventing a time or hiding the
-// mark are both worse than saying what is known and nothing else.
 
-import { respawnReading, type RespawnRow } from '@shared/respawn'
+import { respawnClockLabel, respawnReading, type RespawnRow } from '@shared/respawn'
+import { fmtDuration } from '../buffs/format'
 
-/** `2m 14s`, `47s`, or `due`. Null when the row has no estimate to count down. */
+/**
+ * What this pin's clock should read, or null to draw no clock at all.
+ *
+ * The STRING comes from `respawnClockLabel` — the same call the Timers tab and the respawn overlay
+ * make, with the same injected formatter, so a pin and a row can no longer word one reading two
+ * ways. What is local is the SILENCE: see the header for why a stale clock comes off the map.
+ */
 export function mapClockText(row: RespawnRow | undefined, now: number): string | null {
   if (!row) return null
   const reading = respawnReading(row, now)
-  if (reading.remainingMs === undefined) return null
-  if (reading.due) return 'due'
-  const secs = Math.ceil(reading.remainingMs / 1000)
-  const mins = Math.floor(secs / 60)
-  return mins > 0 ? `${String(mins)}m ${String(secs % 60)}s` : `${String(secs)}s`
+  // THE ESTIMATE IS LONG GONE. Timers says `due long ago` because a row is a thing you went to
+  // read; a pin is a thing you are trying to see past.
+  if (reading.stale) return null
+  // Nothing to count down and nothing seen — `awaiting next death` is an answer for a list, not a
+  // label over a map.
+  if (!reading.seen && row.estimateMs === undefined) return null
+  return respawnClockLabel(row, now, fmtDuration)
 }
 
 /**

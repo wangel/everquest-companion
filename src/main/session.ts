@@ -46,6 +46,7 @@ import {
   combat,
   epoch,
   killsModule,
+  respawnModule,
   levelingModule,
   lootModule,
   outputFilesModule,
@@ -297,6 +298,14 @@ function resetWorldFor(ref: CharacterRef): void {
   // the character on their own group roster. Same injection path, same instant, for the same
   // reason: it must be in place before the scan replay folds the first burst.
   rosterModule.setSelfName(ref.name)
+  // …and the two folds that count KILLS (log/reducers.ts `isOwnPetDeath`). EverQuest names a
+  // summoned pet after its owner, so without the name the player's own warder dying folds as a mob
+  // kill - 16 of them in one reporter's log, after which the pet appeared in the Timers tab's
+  // history offering a respawn clock on a mob that does not exist. Same injection path and the
+  // same instant as the three above, and for the identical reason: it must be in place BEFORE the
+  // scan replay, or the entries it exists to prevent are re-created from the log on the way in.
+  killsModule.setSelfName(ref.name)
+  respawnModule.setSelfName(ref.name)
   combat.reset()
   // Inject the player's own name (we know it from the ref) BEFORE the scan replay,
   // so incoming self-heals ("You healed <Name> for N") attribute from the first

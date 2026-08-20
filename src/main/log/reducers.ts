@@ -10,12 +10,45 @@ import type { LogEvent } from '../../shared/logEvents'
 import { killTotals, type KillMap } from '../../shared/kills'
 
 /**
+ * YOUR OWN PET, DYING - which is not a mob and never was a kill.
+ *
+ * EverQuest names a summoned pet after its owner and prints it that way on the slain line, so a
+ * pet death reads as an ordinary mob death and was counted as one: 16 of them in one reporter's
+ * log, after which the pet sat in the Timers tab's kill history offering a respawn clock on a mob
+ * that does not exist.
+ *
+ * THIS IS NOT A GUESS ABOUT THE NAME'S SHAPE. The possessive is only ever matched against the name
+ * the app KNOWS is the player's, injected at `resetWorldFor` by the same path and at the same
+ * instant the parser and the group roster learn it (session.ts). No EverQuest mob is named after
+ * your character, so this cannot catch one. Somebody ELSE's pet stays counted - that death did
+ * happen in the world, and this filter is not the place to hold an opinion about it.
+ *
+ * Both apostrophes, because the game writes a backtick and everything else writes a straight
+ * quote (shared/namedRoster.ts fought the same fight one join over).
+ */
+export function isOwnPetDeath(name: string, selfName: string | undefined): boolean {
+  if (selfName === undefined) return false
+  const self = selfName.trim().toLowerCase()
+  if (self === '') return false
+  const n = name.trim().toLowerCase()
+  return n.startsWith(self + '`s ') || n.startsWith(self + "'s ")
+}
+
+/**
  * Whether a `death` event counts as a kill for the kills tracker. Self-slain
  * always counts; slain-by counts only when the killer isn't you. (Same filter the
  * legacy reduceEvent used.)
+ *
+ * `selfName` is the active character and is OPTIONAL: a caller that has not been told behaves
+ * exactly as this function always did, so the filter can never silently strengthen underneath a
+ * module with no owner installed. See `isOwnPetDeath` for what passing it buys.
  */
-export function isCountedKill(ev: Extract<LogEvent, { kind: 'death' }>): boolean {
+export function isCountedKill(
+  ev: Extract<LogEvent, { kind: 'death' }>,
+  selfName?: string
+): boolean {
   if (!ev.bySelf && ev.killer && /^you\b/i.test(ev.killer)) return false
+  if (isOwnPetDeath(ev.name, selfName)) return false
   return true
 }
 

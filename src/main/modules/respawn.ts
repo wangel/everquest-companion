@@ -201,6 +201,8 @@ export class RespawnModule implements EqModule<RespawnSnap, RespawnDelta> {
   readonly id = 'respawn'
   private history = new Map<string, MobHistory>()
   private zone = ''
+  /** The active character, for the own-pet filter. Undefined until `setSelfName`. */
+  private selfName: string | undefined
   /** When the current continuous stay in `zone` began. Zero before any zone line. */
   private zoneSince = 0
   private prefs: RespawnPrefs = DEFAULT_RESPAWN_PREFS
@@ -240,6 +242,18 @@ export class RespawnModule implements EqModule<RespawnSnap, RespawnDelta> {
     this.nowMs = Date.now()
     this.rev++
     this.dirty = true
+  }
+
+  /**
+   * WHOSE LOG THIS IS — installed at `resetWorldFor`, before the scan folds a line, by the same
+   * path and at the same instant the parser and the group roster learn it (session.ts).
+   *
+   * Its ONLY use is `isCountedKill`: EverQuest names a summoned pet after its owner, so without
+   * this the player's own pet dying is folded as a mob kill. It must be in place BEFORE the replay
+   * or a historical scan re-creates the entries it exists to prevent.
+   */
+  setSelfName(name: string | undefined): void {
+    this.selfName = name
   }
 
   /**
@@ -285,7 +299,7 @@ export class RespawnModule implements EqModule<RespawnSnap, RespawnDelta> {
       return
     }
     if (ev.kind === 'death') {
-      if (!isCountedKill(ev)) return
+      if (!isCountedKill(ev, this.selfName)) return
       this.recordDeath(idKey(ev.name), ev.name, ev.ts)
       return
     }

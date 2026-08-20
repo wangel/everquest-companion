@@ -32,6 +32,8 @@ import { mergeKills } from '../../shared/logHistory'
 
 export class KillsModule implements EqModule<KillsSnap, KillsDelta> {
   readonly id = 'kills'
+  /** The active character, for the own-pet filter. Undefined until `setSelfName`. */
+  private selfName: string | undefined
   private kills: KillMap = {}
   /**
    * The kill map as it stood in logs that have been ARCHIVED away (shared/logHistory.ts). Held
@@ -64,6 +66,18 @@ export class KillsModule implements EqModule<KillsSnap, KillsDelta> {
     this.seq = 0
     this.dirty = new Set()
     this.pendingExpTs = null
+  }
+
+  /**
+   * WHOSE LOG THIS IS — installed at `resetWorldFor`, before the scan folds a line, by the same
+   * path and at the same instant the parser and the group roster learn it (session.ts).
+   *
+   * Its ONLY use is `isCountedKill`: EverQuest names a summoned pet after its owner, so without
+   * this the player's own pet dying is folded as a mob kill. It must be in place BEFORE the replay
+   * or a historical scan re-creates the entries it exists to prevent.
+   */
+  setSelfName(name: string | undefined): void {
+    this.selfName = name
   }
 
   /**
@@ -103,7 +117,7 @@ export class KillsModule implements EqModule<KillsSnap, KillsDelta> {
     // the kill it precedes whoever landed the blow, and letting a dropped `slain by You` twin
     // leave it pending would hand your experience to the next mob that dies near you.
     const credited = this.takeExp(ev.ts)
-    if (!isCountedKill(ev)) return
+    if (!isCountedKill(ev, this.selfName)) return
     // THE TIER IS THE ZONE YOU WERE STANDING IN, and `zoneTier` now answers with four kinds of
     // thing, not one number in five (JOS-166): a difficulty d0..d4 for an instance, TIER_OPEN_WORLD
     // for a bare zone name, TIER_UNKNOWN for an instance it cannot decode — and TIER_UNKNOWN for
