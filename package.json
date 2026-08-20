@@ -16,6 +16,7 @@
     "scrape:bosses": "tsx scripts/scrape-bosses.ts",
     "scrape:classes": "tsx scripts/scrape-classes.ts",
     "scrape:mobs": "tsx scripts/scrape-mobs.ts",
+    "scrape:named": "tsx scripts/scrape-named.ts",
     "scrape:quests": "tsx scripts/scrape-quests.ts",
     "scrape:respawns": "tsx scripts/scrape-respawns.ts",
     "scrape:spells": "tsx scripts/scrape-spells.ts",
