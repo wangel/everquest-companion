@@ -14,6 +14,7 @@ import type { CloseToTrayPrefs } from '../shared/closeToTray'
 import type { TelemetryPrefs } from '../shared/telemetry'
 import type { PerfHudPrefs } from '../shared/perf'
 import type { LogArchivePrefs } from '../shared/logArchive'
+import type { LogHistory } from '../shared/logHistory'
 import type { ProcessPriorityPrefs } from '../shared/processPriority'
 import type { ResistPrefs } from '../shared/resistPrefs'
 import type { GraphicsPrefs } from '../shared/graphicsPrefs'
@@ -231,6 +232,21 @@ export interface StoreShape {
    * 400-code-line ceiling.
    */
   logArchive?: LogArchivePrefs
+  /**
+   * WHAT SURVIVES A ROTATION (shared/logHistory.ts), per character id. Loot, the four leveling
+   * ledgers and the kill map, filed in one bucket PER SOURCE - `live` for the log being tailed
+   * (rebuilt by every fold, so never merged into) and `archive:<file>` for each rotated log.
+   *
+   * ABSENT MEANS "nothing has been archived, so the fold is the whole truth" - which is what every
+   * store written before this commit meant and what a machine that never enables archiving keeps
+   * meaning. Another additive optional key on the carve-out above: no schema bump, no migration.
+   *
+   * A CACHE, NOT A STATEMENT OF INTENT, which is why it is here rather than on `ProgressState`:
+   * everything under `byCharacter` is something the user did or knows, and this is only what the
+   * fold already derived from bytes that have since been compressed away. Accessors live in
+   * `storeLogHistory.ts` because store.ts is at the 400-code-line ceiling.
+   */
+  logHistory?: Record<string, LogHistory>
   /**
    * WHICH CASTERS TEACH THE RESIST PROFILES (schema migration 13→14; JOS-385,
    * shared/resistPrefs.ts). `{ includeNpcCasters: true }` — charmed pets and NPC casters count as

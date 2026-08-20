@@ -25,8 +25,10 @@
 // deliberately so: hiding an overlay on a bad guess costs a glance, moving a 228 MB log on a bad
 // guess costs the file. Nothing here is time-critical - there is always a next launch.
 
-import { effectiveEqRoot, eqLogsDir } from './config'
-import { rotate, type RotateResult } from './archive'
+import { basename } from 'path'
+import { characterId, effectiveEqRoot, eqLogsDir, parseLogName } from './config'
+import { rotate, type RotatedLog, type RotateResult } from './archive'
+import { promoteRotatedLog } from './historyPersist'
 import { getLogArchivePrefs } from '../storeLogArchive'
 import { eqRootPrefix } from '../presenceProtocol'
 import { loadPresenceNative } from '../presenceNative'
@@ -66,6 +68,11 @@ export async function rotateLogsBeforeTail(): Promise<RotateResult | null> {
       now: () => new Date(),
       onError: (message, err) => logError('main:logArchive', { message, err })
     })
+    // PROMOTE BEFORE ANYTHING ELSE LOOKS AT THE STORE. The file just renamed is precisely the file
+    // the PREVIOUS session folded into its `live` bucket, so that bucket IS this archive's history
+    // and no byte has to be re-read to know it (log/historyPersist.ts). Done here, at startup and
+    // before the fold, because `seedArchivedHistory` runs moments later and must already see it.
+    for (const r of result.rotated) promoteRotated(r)
     if (result.rotated.length > 0) {
       const names = result.rotated.map((r) => `${r.logFile} (${mb(r.bytes)} MB)`).join(', ')
       logInfo(`[everquest-companion] archived ${String(result.rotated.length)} log(s): ${names}`)
@@ -82,6 +89,22 @@ export async function rotateLogsBeforeTail(): Promise<RotateResult | null> {
     logError('main:logArchive', err)
     return null
   }
+}
+
+/**
+ * Move one rotated log's history from `live` into its own archive bucket.
+ *
+ * The bucket key is the ARCHIVE's filename (`…-20260818-214124.txt.gz`), not the character log's:
+ * it is unique per rotation, which is what makes re-promotion detectable, and it names a file that
+ * still exists on disk for anyone reconciling the two by hand.
+ *
+ * A log whose name does not parse into a character is skipped rather than guessed at — `rotate()`
+ * only ever matches `eqlog_*.txt`, so this is a belt-and-braces refusal, not a path.
+ */
+function promoteRotated(rotated: RotatedLog): void {
+  const ref = parseLogName(rotated.logFile)
+  if (!ref) return
+  promoteRotatedLog(characterId(ref), `${basename(rotated.archivedPath)}.gz`)
 }
 
 /** Bytes as whole megabytes, for a log line. */

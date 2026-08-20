@@ -28,16 +28,35 @@ import {
   type KillsDelta,
   type KillsSnap
 } from '../../shared/kills'
+import { mergeKills } from '../../shared/logHistory'
 
 export class KillsModule implements EqModule<KillsSnap, KillsDelta> {
   readonly id = 'kills'
   private kills: KillMap = {}
+  /**
+   * The kill map as it stood in logs that have been ARCHIVED away (shared/logHistory.ts). Held
+   * apart from `kills` because this module is an AGGREGATE, not a ledger: `kills` is rebuilt by
+   * every fold from the live log's bytes, so the persisted `live` bucket must contain `kills`
+   * ALONE (`liveKills()`), while everything a reader sees is the two summed. Merging the archived
+   * counts INTO `kills` would survive one launch and double on the next - JOS-231 exactly.
+   */
+  private archived: KillMap = {}
   private zone: string | undefined
   private seq = 0
   /** mob names touched since the last flush (deltas carry only these entries). */
   private dirty = new Set<string>()
   /** The experience line the next kill line may claim — the timestamp is all this module needs. */
   private pendingExpTs: number | null = null
+
+  /** Seed the counts recovered from archived logs. Set once at wiring, before the fold. */
+  setArchived(map: KillMap): void {
+    this.archived = map
+  }
+
+  /** ONLY what this session's fold counted - what the persisted `live` bucket must contain. */
+  liveKills(): KillMap {
+    return this.kills
+  }
 
   reset(): void {
     this.kills = {}
@@ -102,7 +121,10 @@ export class KillsModule implements EqModule<KillsSnap, KillsDelta> {
   }
 
   snapshot(): { seq: number; state: KillsSnap } {
-    return { seq: this.seq, state: { v: KILLS_SHAPE_VERSION, mobs: this.kills } }
+    return {
+      seq: this.seq,
+      state: { v: KILLS_SHAPE_VERSION, mobs: mergeKills([this.archived, this.kills]) }
+    }
   }
 
   /**
@@ -114,8 +136,21 @@ export class KillsModule implements EqModule<KillsSnap, KillsDelta> {
    */
   flushDelta(): { seq: number; delta: KillsDelta } | null {
     if (this.dirty.size === 0) return null
+    // THE DELTA CARRIES THE MERGED ENTRY, NOT THE LIVE ONE. This module's own contract (below)
+    // is that the renderer REPLACES a mob wholesale rather than merging fields — so shipping the
+    // live-only record here would silently erase that mob's archived kills the first time it died
+    // again this session. The mob would drop from "47 kills" to "1" on a kill, which reads as data
+    // loss and is the single sharpest edge in the archived-history feature.
     const changed: KillMap = {}
-    for (const mob of this.dirty) changed[mob] = this.kills[mob]
+    for (const mob of this.dirty) {
+      // PER DIRTY MOB, never the whole map. `flushDelta` runs on the live tick, and merging every
+      // mob this character has ever killed to describe the one that just died would put an
+      // O(all mobs) walk on a throttled hot path for no answer it does not already have.
+      const archived = this.archived[mob]
+      changed[mob] = archived
+        ? mergeKills([{ [mob]: archived }, { [mob]: this.kills[mob] }])[mob]
+        : this.kills[mob]
+    }
     this.dirty = new Set()
     return { seq: this.seq, delta: { v: KILLS_SHAPE_VERSION, changed } }
   }
