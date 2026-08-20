@@ -27,6 +27,7 @@
 // is the one channel that actually closes the gap.
 
 import namedJson from './data/named.json'
+import { zoneShortName } from '../shared/zones'
 
 /** One roster row. `outOfEra` is present only when true; see scripts/scrape-named.ts. */
 interface NamedRow {
@@ -47,16 +48,34 @@ export function namedKey(s: string): string {
   return s.replace(/_/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase()
 }
 
-/** zone key → the set of in-era named names in it, both folded. Built once. */
+/**
+ * ZONE SHORT NAME → the set of in-era named names in it, both folded. Built once.
+ *
+ * KEYED BY THE SHORT NAME, NOT THE WIKI'S SPELLING, and that is law 12 rather than tidiness. The
+ * roster says `Lower Guk`; the log says `You have entered The Ruins of Old Guk.` They are the same
+ * room and disagree by NAME, exactly as `The Ruins of Old Paineel` and `The Hole` do — and
+ * `shared/zones.ts` is the hand-authored, evidence-verified table that already knows it. The first
+ * cut of this file compared the two strings directly and was therefore silently DEAD in Guk: a
+ * replay of a reporter's live log armed 0 prompts across 1,121 deaths, in the zone he was standing
+ * in at the time. Both sides now fold through `zoneShortName`, so a zone the table cannot resolve
+ * simply has no roster (silence), and one it renames joins correctly.
+ */
 const byZone = ((): Map<string, Set<string>> => {
   const out = new Map<string, Set<string>>()
   for (const [zone, rows] of Object.entries((namedJson as NamedFile).zones)) {
+    const short = zoneShortName(zone)
+    if (short === null) continue
     const set = new Set<string>()
     // OUT-OF-ERA ROWS ARE DROPPED HERE rather than at scrape time: the file keeps them because the
     // wiki's verdict is evidence worth committing, and this is the reader that acts on it. A mob
     // the wiki badges Kunark cannot die in this game, so it may never arm a prompt.
     for (const row of rows) if (row.outOfEra !== true) set.add(namedKey(row.name))
-    if (set.size > 0) out.set(namedKey(zone), set)
+    // A short name can be reached by two wiki zones (Upper and Lower Guk are distinct, but a
+    // renamed pair is not), so rosters MERGE rather than overwrite.
+    if (set.size === 0) continue
+    const existing = out.get(short)
+    if (existing) for (const n of set) existing.add(n)
+    else out.set(short, set)
   }
   return out
 })()
@@ -64,12 +83,15 @@ const byZone = ((): Map<string, Set<string>> => {
 /** Does the roster call this mob notable in this zone? False for an unknown zone — silence. */
 export function isNamedMob(mob: string, zone: string | undefined): boolean {
   if (zone === undefined || zone === '') return false
-  return byZone.get(namedKey(zone))?.has(namedKey(mob)) ?? false
+  const short = zoneShortName(zone)
+  if (short === null) return false
+  return byZone.get(short)?.has(namedKey(mob)) ?? false
 }
 
 /** The in-era named names the roster knows for a zone, folded. Empty for an unknown zone. */
 export function namedInZone(zone: string): ReadonlySet<string> {
-  return byZone.get(namedKey(zone)) ?? new Set<string>()
+  const short = zoneShortName(zone)
+  return (short === null ? undefined : byZone.get(short)) ?? new Set<string>()
 }
 
 /** How many zones and names the committed roster carries — for the boot log. */

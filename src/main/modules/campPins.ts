@@ -36,6 +36,7 @@ import { isNamedMob } from '../namedDb'
 import {
   CAMP_QUIET_MS,
   armIsLive,
+  campKey,
   promptVisible,
   setCampPin,
   type CampArm,
@@ -113,7 +114,7 @@ export class CampPinsModule implements EqModule<CampSnap, CampDelta> {
     const zone = this.zone
     if (zone === undefined) return
     if (!this.arms(mob, zone)) return
-    const key = `${mob.trim().toLowerCase()} ${zone.trim().toLowerCase()}`
+    const key = campKey(mob, zone)
     // QUIET: this mob's prompt was ignored recently, so it does not ask again yet.
     const quiet = this.quietUntil.get(key)
     if (quiet !== undefined && ts < quiet) return
@@ -156,7 +157,7 @@ export class CampPinsModule implements EqModule<CampSnap, CampDelta> {
     // IGNORED. It goes quiet rather than asking again on the next spawn - the player said no by
     // saying nothing, and a prompt that reappears every nine minutes is the nag petNudge's QUIET
     // exists to prevent.
-    const key = `${arm.mob.trim().toLowerCase()} ${arm.zone.trim().toLowerCase()}`
+    const key = campKey(arm.mob, arm.zone)
     this.quietUntil.set(key, now + CAMP_QUIET_MS)
     this.arm = null
     this.bump()
