@@ -201,10 +201,18 @@ export interface PlacedPin {
  */
 export function pinsForRows(
   rows: readonly MobPaneRow[],
-  limit: number = MAX_PINS
+  limit: number = MAX_PINS,
+  keep?: (row: MobPaneRow) => boolean
 ): { pins: PlacedPin[]; capped: boolean } {
   const pins: PlacedPin[] = []
   for (const row of rows) {
+    // THE PANE LISTS EVERY MOB; THE MAP PINS ONLY THE NOTABLE ONES. A zone's catalog runs to
+    // hundreds of rows (Kael Drakkel is 343) and pinning all of them buries the handful anybody
+    // is actually looking for under the trash they are killing to get there. The filter is the
+    // wiki's OWN roster (shared/namedRoster.ts), never a guess about what looks named - the four
+    // things that look like they would work are listed in scripts/scrape-named.ts and all four
+    // are on trash too. No predicate ⇒ every row pins, which is what the pane's own tests pass.
+    if (keep && !keep(row)) continue
     for (let i = 0; i < row.pins.length; i += 1) {
       if (pins.length >= limit) return { pins, capped: true }
       pins.push({ row, pin: row.pins[i], key: `${row.id}#${String(i)}` })

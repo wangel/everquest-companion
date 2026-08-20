@@ -7,7 +7,11 @@
 //   * the WIKI's spawn pins and the search flash — the theme's WARNING tone, "the app found this";
 //   * the typed `/loc` marker — the theme's INFO tone and a crosshair, "the one point YOU stated".
 //
-// A camp is the fourth: a place you told the app about AND a mob you are tracking. It takes the
+// A camp is the fourth: a place you told the app about AND a mob you are tracking. It is drawn
+// ONLY where the wiki has no pin of its own - 128 of the 560 in-era named mobs, the ones whose
+// pages state no coordinates or whom the catalog cannot find by name at all. For the other 432 the
+// orange pin is already there and is the better mark: it is the SPAWN point, while a camp is
+// wherever you happened to stand. It takes the
 // theme's SUCCESS tone, which nothing else on the surface uses, and a filled teardrop rather than
 // a crosshair — a crosshair says "this exact point", and a camp is a place you stand, not a
 // coordinate you measured. It carries the mob's NAME beside it, because a map with five identical
@@ -40,6 +44,15 @@ const PIN_PX = 14
 export interface MapCampPinsProps {
   /** This zone's camps. */
   pins: readonly CampPin[]
+  /**
+   * The mobs the WIKI already pins here, folded. A camp for one of them is not drawn.
+   *
+   * THE DUPLICATION THIS REMOVES was visible on screen: a green camp and an orange wiki pin, same
+   * mob, same countdown, a few units apart, because the app asked for a position it already had.
+   * The wiki's pin is the better of the two for a mob it covers - it is the SPAWN point, while a
+   * camp is wherever the player happened to be standing when they answered.
+   */
+  wikiPinned: ReadonlySet<string>
   /** The watched rows, so a camp can show the clock the respawn module already keeps for it. */
   rows: readonly RespawnRow[]
   /** One shared 1 Hz clock — the same instant every countdown on the app reads. */
@@ -47,7 +60,7 @@ export interface MapCampPinsProps {
   vp: MapViewport
 }
 
-export function MapCampPins({ pins, rows, now, vp }: MapCampPinsProps): JSX.Element {
+export function MapCampPins({ pins, rows, now, vp, wikiPinned }: MapCampPinsProps): JSX.Element {
   const theme = useTheme()
   const color = theme.palette.success.main
   // KEYED BY ZONE **AND** MOB, because a row id is `<zone key>::<mob key>` and the same name is
@@ -63,7 +76,9 @@ export function MapCampPins({ pins, rows, now, vp }: MapCampPinsProps): JSX.Elem
       style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
       aria-hidden
     >
-      {pins.map((pin) => {
+      {pins
+        .filter((pin) => !wikiPinned.has(pin.mob.trim().toLowerCase()))
+        .map((pin) => {
         const at = mapFromLoc({ ns: pin.ns, ew: pin.ew, z: pin.z })
         const p = vp.toScreen(at.x, at.y)
         const row = byKey.get(`${pin.zone.trim().toLowerCase()}::${pin.mob.trim().toLowerCase()}`)
@@ -110,7 +125,7 @@ export function MapCampPins({ pins, rows, now, vp }: MapCampPinsProps): JSX.Elem
             </span>
           </div>
         )
-      })}
+        })}
     </div>
   )
 }

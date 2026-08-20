@@ -74,7 +74,7 @@ const MAX_RETRIES = 5
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const MOBS_PATH = resolve(HERE, '../src/renderer/src/data/eqlegends/mobs.json')
-const OUT_PATH = resolve(HERE, '../src/main/data/named.json')
+const OUT_PATH = resolve(HERE, '../src/renderer/src/data/eqlegends/named.json')
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 

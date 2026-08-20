@@ -234,7 +234,13 @@ function MapSurface({
           the same `project` every other mark uses. Nothing here knows which way north is. */}
       {/* Camps UNDER the /loc crosshair: the crosshair is where you are NOW and must never be
           hidden by a pin for somewhere you stood last week. */}
-      <MapCampPins pins={camps} rows={campRows} now={campNow} vp={vp} />
+      <MapCampPins
+        pins={camps}
+        rows={campRows}
+        now={campNow}
+        vp={vp}
+        wikiPinned={new Set((pane?.pins ?? []).map((p) => p.row.name.trim().toLowerCase()))}
+      />
       {locMarker != null && <MapLocMarker at={mapFromLoc(locMarker)} loc={locMarker} vp={vp} />}
     </Box>
   )

@@ -17,6 +17,7 @@
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import type { MapData, MapPackPrefs, MapPoint, MapSearchHit, ZoneShort } from '@shared/maps'
+import { isNamedMob } from '@shared/namedRoster'
 import type { MobEntry } from '@shared/types'
 import { MOB_CATALOG } from '../mobs/mobSearch'
 import { CROSS_ZONE_LIMIT, crossZoneRows, type CrossZoneRow } from './crossZone'
@@ -80,7 +81,14 @@ export function useMapPane({ zoneName, points, catalog, mapId, onCenter }: MapPa
   const mobs = useMemo(() => filterPaneRows(allMobs, q), [allMobs, q])
   const labels = useMemo(() => filterPaneRows(allLabels, q), [allLabels, q])
   const counts = useMemo(() => paneCounts(allMobs, allLabels), [allMobs, allLabels])
-  const drawn = useMemo(() => pinsForRows(mobs), [mobs])
+  // PINNED: the wiki's own notable NPCs, not every mob in the zone. `isNamedMob` reads the same
+  // committed roster main reads (shared/namedRoster.ts), so the map and the prompt cannot disagree
+  // about what counts as named. A zone the roster has never heard of pins NOTHING rather than
+  // falling back to everything - silence is the direction this feature fails in everywhere else.
+  const drawn = useMemo(
+    () => pinsForRows(mobs, undefined, (row) => isNamedMob(row.name, zoneName ?? undefined)),
+    [mobs, zoneName]
+  )
 
   // A row id from another zone would ring a coordinate that is no longer on this map.
   useEffect(() => {

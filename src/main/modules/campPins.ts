@@ -21,6 +21,11 @@
 // Either is enough. Neither is inferred: the first is somebody's published editorial judgement,
 // the second is the user's own instruction.
 //
+// AND THEN A THIRD CONDITION, WHICH IS REALLY THE POINT: the catalog must NOT already know where
+// the mob spawns. 77% of in-era named mobs carry wiki coordinates that `MapMobPins` has been
+// drawing all along, so asking about those is asking a player to place a pin already on screen.
+// The prompt exists for the 128 the wiki missed, and nothing else.
+//
 // THE ZONE IS THE BASE ZONE. `zoneTier` strips ` - Group 3`, ` 4 (Refined)` and the rest, because a
 // Refined instance of Lower Guk is the same room as the open-world one and a camp pinned in one is
 // the camp in the other. The tier is a fact about the difficulty, never about the geography.
@@ -33,7 +38,7 @@ import type { EqModule } from './types'
 import type { LogEvent } from '../../shared/logEvents'
 import { zoneTier } from '../log/parser'
 import { KILL_EXP_JOIN_MS } from '../../shared/kills'
-import { isNamedMob } from '../namedDb'
+import { catalogHasCoords, isNamedMob } from '../namedDb'
 import type { CampDelta, CampSnap } from '../../shared/campPins'
 import {
   CAMP_QUIET_MS,
@@ -151,6 +156,12 @@ export class CampPinsModule implements EqModule<CampSnap, CampDelta> {
     // which is better than any guess about whether we engaged it.
     if (!credited) return
     if (!this.arms(mob, zone)) return
+    // NEVER ASK FOR WHAT THE APP ALREADY HAS. 432 of the 560 in-era named mobs carry wiki
+    // coordinates and the map has always drawn them, so a prompt for one of those asks the player
+    // to hand-place a pin that is already on screen a few units away - which is exactly what
+    // happened before this gate existed. The question is now only put where the catalog is silent:
+    // 128 mobs, about one prompt a session rather than one a pull. namedDb.ts has the measurement.
+    if (catalogHasCoords(mob)) return
     const key = campKey(mob, zone)
     // QUIET: this mob's prompt was ignored recently, so it does not ask again yet.
     const quiet = this.quietUntil.get(key)
@@ -160,7 +171,10 @@ export class CampPinsModule implements EqModule<CampSnap, CampDelta> {
     this.bump()
   }
 
-  /** Does this kill deserve a question? See the header: roster OR watch list, never inference. */
+  /**
+   * Does this kill deserve a question? Roster OR watch list, never inference - and then only when
+   * the catalog cannot answer it already (see `onDeath`).
+   */
   private arms(mob: string, zone: string): boolean {
     return isNamedMob(mob, zone) || this.watched.has(mob.trim().toLowerCase())
   }
