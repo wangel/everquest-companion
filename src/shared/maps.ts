@@ -1,3 +1,5 @@
+import type { LogEventBase } from './logEvents'
+
 // Map-viewer data model (docs/plans/map-viewer.md §3).
 //
 // TYPES ONLY — no runtime dependency on Electron or Node, because both halves of the feature
@@ -176,4 +178,77 @@ export interface MapSearchHit {
   zone: ZoneShort
   point: MapPoint
   score: number
+}
+
+/**
+ * `Your Location is 1918.98, 144.79, 30.07` — the answer to a typed `/loc`.
+ *
+ * THIS LINE WAS BELIEVED NOT TO EXIST, and the belief is worth recording because it shaped a whole
+ * feature. `renderer/features/maps/locMarker.ts` states, as a measurement: *"`Your Location`
+ * appears ZERO times in it, re-measured across the owner's whole 116.8 MB
+ * `eqlog_Primitive_freeport.txt`... because /loc answers in the game window and is never written
+ * to the file the app tails"*, and the map marker was therefore built as a PASTE box. The
+ * measurement was true; the causal claim drawn from it was not. The owner had simply never typed
+ * `/loc`, so the game never had occasion to log one.
+ *
+ * MEASURED 2026-08-19 on a reporter's live EQ Legends log: ZERO occurrences across a 253 MB
+ * archive of ordinary play, then TWO sixteen seconds apart the moment the player typed the
+ * command. The shape matches the one locMarker.ts had already reverse-engineered from 24 wiki
+ * walkthrough pages, character for character — a parser written correctly for a line its author
+ * believed could never arrive.
+ *
+ * IT IS THE ONLY POSITIONAL LINE IN THE LOG, and it exists only when ASKED FOR. There is no
+ * tracking here and none may be implied: the app knows where you were at the instants you typed
+ * `/loc`, and nothing about the time in between.
+ */
+export interface LocEvent extends LogEventBase {
+  kind: 'loc'
+  /** North/south, the first number the game prints. */
+  ns: number
+  /** West/east, the second. */
+  ew: number
+  /** Elevation, the third. */
+  z: number
+}
+
+/**
+ * ONE `/loc` reading: where the player said they were, and WHEN they said it.
+ *
+ * The timestamp is not decoration. `/loc` answers only when typed, so a reading is a fact about an
+ * INSTANT and says nothing about the time on either side of it; a surface drawing one is expected
+ * to say how old it is. See `src/main/modules/loc.ts` for why this is a trail rather than a
+ * position.
+ */
+export interface LocReading {
+  /** When the game printed it (log clock, ms). */
+  ts: number
+  /** North/south, the first number `/loc` prints. */
+  ns: number
+  /** West/east, the second. */
+  ew: number
+  /** Elevation, the third. */
+  z: number
+  /** The zone the fold stood in when it was printed. Absent before any zone line has been seen. */
+  zone?: string
+}
+
+/**
+ * The loc module's snapshot: the ONE most recent reading, or null before any `/loc` was typed.
+ *
+ * ONE READING, NOT A TRAIL, and that is a ruling rather than a simplification. Two `/loc`s minutes
+ * apart say where you stood twice; the path between them is not in the log and must never be drawn
+ * (laws 1 and 6). A straight line between two readings cuts through walls and asserts a route
+ * nobody took - it is the one part of the obvious design that is actively a lie. With no line to
+ * draw there is no history to keep, so there is none.
+ *
+ * The zone is NOT repeated here: the reading carries its own, and the character module already
+ * serves the zone the fold stands in. Two sources for one fact is two things to disagree.
+ */
+export interface LocSnap {
+  current: LocReading | null
+}
+
+/** A newer reading. Emitted only when one arrives, so the renderer simply replaces what it holds. */
+export interface LocDelta {
+  current: LocReading
 }

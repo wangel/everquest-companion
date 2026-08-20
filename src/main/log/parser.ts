@@ -69,7 +69,8 @@ import {
   classifyLoot,
   classifyAaPotion,
   classifyTurnIn,
-  classifyZone
+  classifyZone,
+  classifyLoc
 } from './parseWorld'
 
 export { idKey, looksDamage, spellCanonKey } from './parseCommon'
@@ -141,6 +142,10 @@ const CLASSIFIERS: readonly Classifier[] = [
   classifyAllyPetLeader,
   classifyDeath,
   classifyZone,
+  // WHERE YOU SAID YOU WERE — the typed `/loc`. Beside the zone rule because it answers the same
+  // question one level finer, and because it is the only other positional statement the log makes.
+  // It costs one `startsWith` on the hot path and fires only when a player asked for it.
+  classifyLoc,
   // SESSION frame (login / camp-out / camp-abort). Beside the zone rule because they answer
   // the same question one level up — zone says WHERE you are, these say WHETHER you are in
   // the world at all — and because a Welcome is always followed within 0–1 lines by a zone

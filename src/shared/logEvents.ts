@@ -5,6 +5,12 @@
 // engine, the coming world model) subscribes to the stream instead of running its
 // own regexes. Keep this pure and serializable — no behavior, just data.
 
+// `/loc` — the ONE positional line the log carries — lives in ./maps.ts beside the rest of the
+// map vocabulary, because THIS file is at its 400-code-line factoring cap (the kills.ts /
+// buffTimers.ts / conCard.ts precedent). Its header carries the measurement that graduated it.
+import type { LocEvent } from './maps'
+export type { LocEvent }
+
 import type { DamageType, DamageCategory } from './combat'
 import type { PoisonEffect, PoisonGroup } from './poisons'
 // The /consider LADDER (rungs, chip labels, the app's faction palette, the difficulty
@@ -1425,6 +1431,7 @@ export interface UnknownEvent extends LogEventBase {
 /** The canonical discriminated union of everything the parser can emit. */
 export type LogEvent =
   | ZoneEvent
+  | LocEvent
   | LootEventE
   // The three acquisition families that carry no corpse (JOS-144, ./acquireEvents). They sit
   // beside loot because they answer the same question — how did this reach me — and every line

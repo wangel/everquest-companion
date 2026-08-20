@@ -381,6 +381,36 @@ export function classifyDeath({ text, ts, seq, raw }: ClassifyCtx): LogEvent | n
   return null
 }
 
+/**
+ * `Your Location is 1918.98, 144.79, 30.07` — the answer to a typed `/loc`, and the ONLY
+ * positional line the log carries (shared/logEvents.ts LocEvent has the measurement and the story
+ * of why this app believed it did not exist).
+ *
+ * STRICT, DELIBERATELY, and this is the one place it differs from its cousin. The renderer's
+ * `locMarker.ts parseLoc` is FORGIVING because a human is pasting into a box: it accepts two
+ * numbers or three, commas or whitespace, a stray timestamp, a trailing period. Nothing pastes
+ * here. This reads the sentence the GAME prints, so it matches that sentence and refuses
+ * everything else - three signed decimals, comma-and-space separated, no elevation guessed and no
+ * "defensive slack" that would let a chat line carrying the right words place a marker.
+ *
+ * ANCHORED ON THE BODY, not on `raw`: the cascade hands classifiers the line with its
+ * `[timestamp] ` prefix already stripped (a `^` against `raw` is the tripwire in this repo's
+ * own log-format notes). A player CAN say "Your Location is ..." in chat, but the scrub drops
+ * quoted speech and a tell reaching this classifier would have to have been printed unquoted at
+ * the start of a line, which the chat families never are.
+ */
+const LOC_RE = /^Your Location is (-?\d+(?:\.\d+)?), (-?\d+(?:\.\d+)?), (-?\d+(?:\.\d+)?)$/
+
+/** The typed `/loc` answer. See LOC_RE for why this is strict where the paste parser is not. */
+export function classifyLoc({ text, ts, seq, raw }: ClassifyCtx): LogEvent | null {
+  if (!text.startsWith('Your Location is ')) return null
+  const m = LOC_RE.exec(text)
+  if (!m) return null
+  const [ns, ew, z] = [Number(m[1]), Number(m[2]), Number(m[3])]
+  if (!Number.isFinite(ns) || !Number.isFinite(ew) || !Number.isFinite(z)) return null
+  return { kind: 'loc', seq, ts, raw, ns, ew, z }
+}
+
 /** Zone transitions. */
 export function classifyZone({ text, ts, seq, raw }: ClassifyCtx): LogEvent | null {
   if (text.includes('entered')) {

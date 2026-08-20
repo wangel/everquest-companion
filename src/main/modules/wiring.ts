@@ -28,6 +28,7 @@ import { MessageOverlayMiner, type OverlaySeed } from '../data/messageOverlay'
 import { ComboModule } from './combo'
 import { RosterModule } from './roster'
 import { LootModule } from './loot'
+import { LocModule } from './loc'
 import { TurnInsModule } from './turnins'
 import { ClassUnlocksModule } from './classUnlocks'
 import { KillsModule } from './kills'
@@ -103,6 +104,7 @@ export interface ModuleWiring {
   combo: ComboModule
   roster: RosterModule
   loot: LootModule
+  loc: LocModule
   turnIns: TurnInsModule
   classUnlocks: ClassUnlocksModule
   kills: KillsModule
@@ -165,6 +167,10 @@ export function createModules(deps: ModuleWiringDeps = {}): ModuleWiring {
   // lines the log prints outright.
   const roster = new RosterModule()
   const loot = new LootModule()
+  // WHERE YOU SAID YOU WERE — the typed `/loc` trail. Beside the loot ledger because it is the
+  // same shape (append-only, zone-tagged rows) and because a spawn-point observation is a kill
+  // joined to one of these.
+  const loc = new LocModule()
   const turnIns = new TurnInsModule()
   // WHICH CLASSES THIS CHARACTER MAY RUN AS A PRIMARY (JOS-148) — the observed half of the Sky
   // tab's class-unlock reading, folded from the one line that states an unlock outright. Beside
@@ -260,6 +266,7 @@ export function createModules(deps: ModuleWiringDeps = {}): ModuleWiring {
     combo,
     roster,
     loot,
+    loc,
     turnIns,
     classUnlocks,
     kills,
@@ -286,6 +293,7 @@ export function createModules(deps: ModuleWiringDeps = {}): ModuleWiring {
       combo,
       roster,
       loot,
+      loc,
       turnIns,
       // Position is free: it folds one line kind no other module reads, and nothing reads its
       // state within a delivery. Beside turnIns because that is where a reader looks for it.
