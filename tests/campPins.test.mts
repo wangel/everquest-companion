@@ -25,13 +25,27 @@ import type { LogEvent } from '../src/shared/logEvents'
 
 const T0 = 1_770_000_000_000
 
-/** A death of `mob`, as the fold sees it. */
-const death = (mob: string, ts = T0): LogEvent =>
-  ({ kind: 'death', seq: 1, ts, raw: '', name: mob, bySelf: true }) as LogEvent
+/** The experience line that makes the next death YOURS. See the credit gate in campPins.ts. */
+const exp = (ts: number): LogEvent =>
+  ({ kind: 'expGain', seq: 0, ts, raw: '', pct: 1 }) as LogEvent
+
+/** A death of `mob` CREDITED to you - an exp line, then the slain line, as the log prints them. */
+function death(mob: string, ts = T0): LogEvent[] {
+  return [exp(ts), { kind: 'death', seq: 1, ts, raw: '', name: mob, bySelf: true } as LogEvent]
+}
+
+/** A death of `mob` by SOMEBODY ELSE: the log names it, and pays you nothing. */
+const strangerKill = (mob: string, ts = T0): LogEvent =>
+  ({ kind: 'death', seq: 1, ts, raw: '', name: mob, bySelf: false }) as LogEvent
 /** A typed `/loc`. */
 const loc = (ts: number, ns = 100, ew = 200, z = 30): LogEvent =>
   ({ kind: 'loc', seq: 2, ts, raw: '', ns, ew, z }) as LogEvent
 const zone = (name: string): LogEvent => ({ kind: 'zone', seq: 3, ts: T0, raw: '', zone: name }) as LogEvent
+
+/** Fold a credited kill (the exp line and the slain line together). */
+function feed(m: CampPinsModule, evs: LogEvent[]): void {
+  for (const ev of evs) m.onEvent(ev)
+}
 
 /** A module standing in a zone, ready to fold. */
 function inZone(name = 'Lower Guk'): CampPinsModule {
@@ -46,13 +60,43 @@ test('a roster named arms the prompt; trash in the same zone does not', () => {
   // `the ghoul lord` is in the committed roster for Lower Guk; `a froglok shin knight` is the trash
   // the wiki deliberately omits. Both die in the same room, and only one is worth a question.
   const m = inZone()
-  m.onEvent(death('a froglok shin knight'))
+  feed(m, death('a froglok shin knight'))
   assert.equal(m.snapshot(T0 + 1).state.prompt, undefined, 'trash asks nothing')
 
-  m.onEvent(death('the ghoul lord'))
+  feed(m, death('the ghoul lord'))
   const snap = m.snapshot(T0 + 1).state
   assert.equal(snap.prompt?.mob, 'the ghoul lord')
   assert.equal(snap.prompt?.zone, 'Lower Guk')
+})
+
+test("A STRANGER'S KILL ASKS NOTHING - your log hears the whole zone", () => {
+  // THE DEFECT, reported from a public zone: the owner watched a ghoul executioner die to somebody
+  // else across the room and was asked to pin its camp. `/loc` would have recorded where HE was
+  // standing - a fabricated camp for a mob he never fought.
+  //
+  // A kill is yours only when the log PAID you for it. The stranger's kill prints a slain line and
+  // no experience, so it claims nothing and arms nothing. This is the same answer the celebration
+  // toast reached from the same complaint (2026-08-05), and it is better than any guess about
+  // whether we engaged the mob: it is the log's own statement rather than an inference from damage.
+  const m = inZone()
+  m.onEvent(strangerKill('the ghoul lord'))
+  assert.equal(m.snapshot(T0 + 1).state.prompt, undefined, 'somebody else killed it')
+
+  // The SAME mob, paid for, does ask.
+  feed(m, death('the ghoul lord', T0 + 5000))
+  assert.equal(m.snapshot(T0 + 5001).state.prompt?.mob, 'the ghoul lord')
+})
+
+test('an experience line is CONSUMED by the death it precedes, never a later one', () => {
+  // kills.ts's rule, kept verbatim: one line can never credit two kills. Without it a stranger's
+  // kill moments after your own would inherit your experience and be asked about.
+  const m = inZone()
+  feed(m, death('the ghoul lord'))
+  assert.ok(m.snapshot(T0 + 1).state.prompt, 'yours')
+  // A second, unpaid death of a DIFFERENT watched mob must not claim the same line.
+  m.setWatched(['Gorgalosk'])
+  m.onEvent(strangerKill('Gorgalosk', T0 + 100))
+  assert.equal(m.snapshot(T0 + 101).state.prompt?.mob, 'the ghoul lord', 'the first kill still holds the slot')
 })
 
 test('a WATCHED mob arms it even when the roster has never heard of it', () => {
@@ -61,13 +105,13 @@ test('a WATCHED mob arms it even when the roster has never heard of it', () => {
   // asked for a clock on is an explicit instruction, which outranks any roster.
   const m = inZone()
   m.setWatched(['Gorgalosk'])
-  m.onEvent(death('Gorgalosk'))
+  feed(m, death('Gorgalosk'))
   assert.equal(m.snapshot(T0 + 1).state.prompt?.mob, 'Gorgalosk')
 })
 
 test('a death before any zone line arms nothing - a camp with no zone cannot be filed', () => {
   const m = new CampPinsModule()
-  m.onEvent(death('the ghoul lord'))
+  feed(m, death('the ghoul lord'))
   assert.equal(m.snapshot(T0 + 1).state.prompt, undefined)
 })
 
@@ -85,7 +129,7 @@ test('the card is up the INSTANT the mob dies - there is no grace period', () =>
   // behind its own kill arrived in the middle of the NEXT fight (measured, 2026-08-20 - a ghoul
   // assassin's card appeared 28 s after it died). Asked immediately, answered whenever.
   const m = inZone()
-  m.onEvent(death('the ghoul lord'))
+  feed(m, death('the ghoul lord'))
   assert.equal(m.snapshot(T0).state.prompt?.mob, 'the ghoul lord', 'up at the moment of death')
   assert.equal(m.snapshot(T0 + 1).state.prompt?.mob, 'the ghoul lord')
 })
@@ -95,7 +139,7 @@ test('an immediate /loc still pins - the ask simply becomes its own receipt', ()
   // just did. The toast channel dedupes on id, so the ask is REPLACED by the confirmation rather
   // than suppressed - which is the same outcome without the cost of a late card.
   const m = inZone()
-  m.onEvent(death('the ghoul lord'))
+  feed(m, death('the ghoul lord'))
   m.onEvent(loc(T0 + 500, 1558, -749, -137))
   const snap = m.snapshot(T0 + 600).state
   assert.equal(snap.prompt, undefined, 'answered, so nothing is still asking')
@@ -108,7 +152,7 @@ test('an immediate /loc still pins - the ask simply becomes its own receipt', ()
 
 test('the card stands until SHOW closes, and not one tick longer', () => {
   const m = inZone()
-  m.onEvent(death('the ghoul lord'))
+  feed(m, death('the ghoul lord'))
   assert.ok(m.snapshot(T0 + CAMP_SHOW_MS - 1).state.prompt, 'still standing')
   assert.equal(m.snapshot(T0 + CAMP_SHOW_MS).state.prompt, undefined, 'show has closed')
 })
@@ -117,7 +161,7 @@ test('a /loc after SHOW pins nothing - a stale question collects no answer', () 
   // The whole reason this is not "join a kill to a nearby /loc": a position typed a minute later
   // is a fact about somewhere else, and recording it would be the inference this design refuses.
   const m = inZone()
-  m.onEvent(death('the ghoul lord'))
+  feed(m, death('the ghoul lord'))
   m.onTick(T0 + CAMP_SHOW_MS + 1)
   m.onEvent(loc(T0 + CAMP_SHOW_MS + 2))
   assert.deepEqual(m.snapshot(T0 + CAMP_SHOW_MS + 3).state.pins.pins, {})
@@ -127,14 +171,14 @@ test('a /loc after SHOW pins nothing - a stale question collects no answer', () 
 
 test('QUIET: an ignored prompt stops that mob asking again for a while', () => {
   const m = inZone()
-  m.onEvent(death('the ghoul lord', T0))
+  feed(m, death('the ghoul lord', T0))
   m.onTick(T0 + CAMP_SHOW_MS + 1) // ignored - the arm expires and the mob goes quiet
   // It respawns and dies again well inside the quiet window: no second question.
-  m.onEvent(death('the ghoul lord', T0 + CAMP_SHOW_MS + 60_000))
+  feed(m, death('the ghoul lord', T0 + CAMP_SHOW_MS + 60_000))
   assert.equal(m.snapshot(T0 + CAMP_SHOW_MS + 60_001).state.prompt, undefined)
   // Past the quiet window it may ask again.
   const later = T0 + CAMP_SHOW_MS + CAMP_QUIET_MS + 1
-  m.onEvent(death('the ghoul lord', later))
+  feed(m, death('the ghoul lord', later))
   assert.ok(m.snapshot(later + 1).state.prompt, 'the quiet has lapsed')
 })
 
@@ -145,8 +189,8 @@ test('ONE SLOT: a newer corpse replaces the pending question', () => {
   // is the ambiguity this app refuses. The newer corpse is the one being stood on.
   const m = inZone()
   m.setWatched(['Gorgalosk'])
-  m.onEvent(death('the ghoul lord', T0))
-  m.onEvent(death('Gorgalosk', T0 + 1000))
+  feed(m, death('the ghoul lord', T0))
+  feed(m, death('Gorgalosk', T0 + 1000))
   assert.equal(m.snapshot(T0 + 1001).state.prompt?.mob, 'Gorgalosk')
   m.onEvent(loc(T0 + 2000))
   const pins = m.snapshot(T0 + 3000).state.pins.pins
@@ -155,7 +199,7 @@ test('ONE SLOT: a newer corpse replaces the pending question', () => {
 
 test('a zone line ends the question - the corpse is behind you', () => {
   const m = inZone()
-  m.onEvent(death('the ghoul lord'))
+  feed(m, death('the ghoul lord'))
   m.onEvent(zone('Befallen'))
   m.onEvent(loc(T0 + 1000))
   assert.deepEqual(m.snapshot(T0 + 2000).state.pins.pins, {}, 'a /loc in the next zone pins nothing')

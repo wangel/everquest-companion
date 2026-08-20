@@ -32,6 +32,7 @@
 import type { EqModule } from './types'
 import type { LogEvent } from '../../shared/logEvents'
 import { zoneTier } from '../log/parser'
+import { KILL_EXP_JOIN_MS } from '../../shared/kills'
 import { isNamedMob } from '../namedDb'
 import type { CampDelta, CampSnap } from '../../shared/campPins'
 import {
@@ -61,6 +62,8 @@ export class CampPinsModule implements EqModule<CampSnap, CampDelta> {
   private watched: ReadonlySet<string> = new Set()
   /** A mob that ignored its prompt asks nothing again until this instant. Key: `campKey`-folded. */
   private quietUntil = new Map<string, number>()
+  /** The experience line the next death may claim. See `takeExp` - this is the CREDIT gate. */
+  private pendingExpTs: number | null = null
   private rev = 0
   private dirty = false
 
@@ -69,6 +72,7 @@ export class CampPinsModule implements EqModule<CampSnap, CampDelta> {
     this.arm = null
     this.zone = undefined
     this.quietUntil = new Map()
+    this.pendingExpTs = null
     this.dirty = false
   }
 
@@ -108,13 +112,44 @@ export class CampPinsModule implements EqModule<CampSnap, CampDelta> {
       this.bump()
       return
     }
+    if (ev.kind === 'expGain') {
+      this.pendingExpTs = ev.ts
+      return
+    }
     if (ev.kind === 'death') this.onDeath(ev.name, ev.ts)
     else if (ev.kind === 'loc') this.onLoc(ev.ns, ev.ew, ev.z, ev.ts)
   }
 
+  /**
+   * The experience line this death claims, if any. Claiming CONSUMES it, so one line can never
+   * credit two kills; an unclaimed older line is replaced when a newer one arrives. Copied from
+   * `modules/kills.ts` with its semantics intact, because the two ask the same question and a
+   * second, subtly different answer to "was this kill mine" is the drift law 4 is a scar from.
+   */
+  private takeExp(ts: number): boolean {
+    const at = this.pendingExpTs
+    this.pendingExpTs = null
+    return at !== null && ts >= at && ts - at <= KILL_EXP_JOIN_MS
+  }
+
   private onDeath(mob: string, ts: number): void {
+    // CONSUMED FIRST, whatever happens next - kills.ts consumes before its own filter for the same
+    // reason: a line left pending would hand this kill's experience to the next mob that dies.
+    const credited = this.takeExp(ts)
     const zone = this.zone
     if (zone === undefined) return
+    // THE CREDIT GATE, and the reason it is not optional. Your log prints EVERY death in earshot,
+    // including a stranger's kill across a public zone - the owner watched a ghoul executioner die
+    // to somebody else and be asked about. `/loc` would then pin where HE was standing, which is a
+    // fabricated camp for a mob he never fought.
+    //
+    // A kill is yours only when the log PAID you for it, and it says so in exactly one way: an
+    // experience line immediately before the slain line (JOS's celebration fix, 2026-08-05, from
+    // the same complaint one surface over). That covers a GROUP kill for free - a group-mate's
+    // killing blow still pays party experience into your log - and excludes the stranger, whose
+    // kill pays you nothing and prints nothing. It is the log's own answer to "was this mine",
+    // which is better than any guess about whether we engaged it.
+    if (!credited) return
     if (!this.arms(mob, zone)) return
     const key = campKey(mob, zone)
     // QUIET: this mob's prompt was ignored recently, so it does not ask again yet.
