@@ -11,7 +11,7 @@
 // what law 12 exists to forbid.
 
 import namedJson from '../renderer/src/data/eqlegends/named.json'
-import { zoneShortName } from './zones'
+import { zoneShortName, zoneShortNameFromCatalog } from './zones'
 
 /** One roster row. `outOfEra` is present only when true; see scripts/scrape-named.ts. */
 interface NamedRow {
@@ -29,7 +29,46 @@ interface NamedFile {
  * collapses, and case is dirty on both sides (law 2).
  */
 export function namedKey(s: string): string {
-  return s.replace(/_/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase()
+  return s
+    .replace(/_/g, ' ')
+    // ONE APOSTROPHE. EQ writes a BACKTICK in names the wiki renders with a straight quote, and a
+    // copy-paste through a browser can leave a curly one: the log says `King Thex\`Ka IV`, the
+    // roster says `King Thex'Ka IV`, and they are the same goblin king. This is the same class of
+    // dirt as the underscore above (law 2) - one glyph, three authorities - and no two EverQuest
+    // mobs are distinguished by which apostrophe they use, so folding them cannot merge two mobs.
+    .replace(/[`‘’]/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+/**
+ * A trailing `(...)` on a roster name, which the WIKI adds and the GAME never prints.
+ *
+ * These are page-title disambiguators, not part of the mob's name: two zones both have a mob
+ * called `a reanimated hand`, so the wiki titles the pages `A reanimated hand (Lower Guk)` and
+ * `A reanimated hand (Unrest)` and the notable-NPC list links them by that title. `(NPC)` is the
+ * same device separating a character from the zone or item that shares his name.
+ */
+const DISAMBIGUATOR_RE = /\s*\([^()]*\)\s*$/
+
+/**
+ * Every spelling a roster row should answer to, folded. Usually one; two when the wiki's title
+ * carries a disambiguator.
+ *
+ * BOTH ARE KEPT, never just the stripped one. The parenthetical is evidence — it is what the wiki
+ * actually said — and a mob whose real name ends in brackets would be deleted by a blind strip.
+ * Adding the bare spelling only ever makes the roster answer to MORE of what the log prints.
+ *
+ * MEASURED, 2026-08-20: 9 of the 1,085 roster rows carry one, and every one of them was invisible
+ * to both callers — `a reanimated hand` died in Lower Guk with the catalog holding its
+ * coordinates, and the map drew no pin because the roster was asked about a name the log does not
+ * use. Law 12: this is a rename the SOURCE states, not a fuzzy match.
+ */
+export function rosterSpellings(name: string): string[] {
+  const full = namedKey(name)
+  const bare = namedKey(name.replace(DISAMBIGUATOR_RE, ''))
+  return bare !== '' && bare !== full ? [full, bare] : [full]
 }
 
 /**
@@ -44,16 +83,37 @@ export function namedKey(s: string): string {
  * in at the time. Both sides now fold through `zoneShortName`, so a zone the table cannot resolve
  * simply has no roster (silence), and one it renames joins correctly.
  */
+/**
+ * The folded spellings of one zone's IN-ERA rows.
+ *
+ * OUT-OF-ERA ROWS ARE DROPPED HERE rather than at scrape time: the file keeps them because the
+ * wiki's verdict is evidence worth committing, and this is the reader that acts on it. A mob the
+ * wiki badges Kunark cannot die in this game, so it may never arm a prompt or draw a pin.
+ */
+function inEraSpellings(rows: readonly NamedRow[]): Set<string> {
+  const set = new Set<string>()
+  for (const row of rows) {
+    if (row.outOfEra === true) continue
+    for (const n of rosterSpellings(row.name)) set.add(n)
+  }
+  return set
+}
+
 const byZone = ((): Map<string, Set<string>> => {
   const out = new Map<string, Set<string>>()
   for (const [zone, rows] of Object.entries((namedJson as NamedFile).zones)) {
-    const short = zoneShortName(zone)
+    // THE CATALOG INDEX, NOT THE LOG ONE, because a roster key is a WIKI PAGE TITLE — the same
+    // naming authority `mobCatalogNames` already records, and a different one from what the log
+    // prints. `zoneShortNameFromCatalog` is seeded from the log-side index, so it resolves
+    // everything `zoneShortName` does and nine zones besides. MEASURED 2026-08-20: folding the
+    // build side through the log index silently dropped THREE whole rosters — `Permafrost` (13
+    // in-era nameds) and `Runnyeye` (8), which the table knows only as `Permafrost Keep` and
+    // `Clan RunnyEye`, plus all-Kunark `Dalnir`. The QUERY side below still folds through
+    // `zoneShortName`, because what it is handed is a zone the LOG printed; widening that inlet
+    // to admit wiki abbreviations is what zones.ts refuses at length.
+    const short = zoneShortNameFromCatalog(zone)
     if (short === null) continue
-    const set = new Set<string>()
-    // OUT-OF-ERA ROWS ARE DROPPED HERE rather than at scrape time: the file keeps them because the
-    // wiki's verdict is evidence worth committing, and this is the reader that acts on it. A mob
-    // the wiki badges Kunark cannot die in this game, so it may never arm a prompt.
-    for (const row of rows) if (row.outOfEra !== true) set.add(namedKey(row.name))
+    const set = inEraSpellings(rows)
     // A short name can be reached by two wiki zones (Upper and Lower Guk are distinct, but a
     // renamed pair is not), so rosters MERGE rather than overwrite.
     if (set.size === 0) continue

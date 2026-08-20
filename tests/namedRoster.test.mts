@@ -18,6 +18,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { parseNotableNpcs } from '../scripts/sources/notableNpcs'
+import { isNamedMob, namedKey, rosterSpellings } from '../src/shared/namedRoster'
 
 /** The shape eqlwiki really returns, trimmed to the row that matters. */
 const ZONE_HTML = `
@@ -87,4 +88,62 @@ test('parseNotableNpcs: underscores in a target become spaces, and %xx is decode
     rows.map((r) => r.page),
     ['A reanimated hand (Lower Guk)', 'Kahaptra Z`Taj']
   )
+})
+
+
+// ---------------------------------------------------------------------------------------------
+// THE READ HALF — `src/shared/namedRoster.ts`, driven against the REAL committed roster.
+//
+// EVERY BUG BELOW WAS SILENT. The roster is a WHITELIST: a name it fails to match is not an error,
+// it is a mob that quietly stops drawing a pin and stops arming a prompt, in a zone the player is
+// standing in. There is no log line, no red square, nothing to notice. So each of these pins a
+// join that was measured broken against a real player's log rather than a hypothetical one.
+//
+// The join has THREE naming authorities in it and no two of them agree (law 2, law 12):
+//   * the LOG prints what the game renders  — `a reanimated hand`, `King Thex\`Ka IV`
+//   * the ROSTER carries a wiki PAGE TITLE  — `a reanimated hand (Lower Guk)`, `King Thex'Ka IV`
+//   * the ZONE key is a wiki page title too — `Permafrost`, where the log says `Permafrost Keep`
+
+test('the wiki DISAMBIGUATOR is not part of the name the game prints', () => {
+  // THE REPORTED BUG, 2026-08-20. Two zones have a mob called `a reanimated hand`, so the wiki
+  // titles the pages `(Lower Guk)` and `(Unrest)` and its notable-NPC list links them by title.
+  // The game prints neither. The catalog holds this mob's coordinates and the map drew no pin,
+  // because the named-only filter was asked about a name that exists nowhere but the wiki.
+  assert.equal(isNamedMob('a reanimated hand', 'The Ruins of Old Guk'), true)
+  // …and the full spelling still answers. Both are kept; the parenthetical is evidence.
+  assert.equal(isNamedMob('a reanimated hand (Lower Guk)', 'The Ruins of Old Guk'), true)
+})
+
+test('rosterSpellings keeps BOTH spellings, and invents nothing for a bare name', () => {
+  assert.deepEqual(rosterSpellings('A goblin alchemist (Permafrost)'), [
+    'a goblin alchemist (permafrost)',
+    'a goblin alchemist'
+  ])
+  assert.deepEqual(rosterSpellings('Raster of Guk'), ['raster of guk'])
+  // A name that is NOTHING but a parenthetical keeps its one spelling rather than folding to ''.
+  assert.deepEqual(rosterSpellings('(Unknown)'), ['(unknown)'])
+})
+
+test('one apostrophe: the log writes a backtick where the wiki writes a quote', () => {
+  // `King Thex\`Ka IV` in the log, `King Thex'Ka IV` in the roster — one goblin king. 40 of the
+  // roster's names carry an apostrophe of some kind, so this is a class, not a special case.
+  assert.equal(namedKey("Thex'Ka"), namedKey('Thex`Ka'))
+  assert.equal(namedKey('Thex\u2019Ka'), namedKey('Thex`Ka'))
+  assert.equal(isNamedMob('King Thex`Ka IV', 'Permafrost Keep'), true)
+})
+
+test('a roster ZONE is a wiki spelling, so it folds through the CATALOG index', () => {
+  // MEASURED: folding the build side through the log-name index dropped three whole rosters. The
+  // table knows this place as `Permafrost Keep`; the wiki titles the page `Permafrost`.
+  assert.equal(isNamedMob('a goblin alchemist', 'Permafrost Keep'), true)
+  assert.equal(isNamedMob('Goblin Patriarch', 'The Permafrost Caverns'), true)
+  assert.equal(isNamedMob('Goblin Warlord', 'Clan RunnyEye'), true)
+})
+
+test('out-of-era stays dropped, and trash stays false', () => {
+  // The era filter is the reason the roster is worth having; widening the fold must not leak it.
+  // `Tserrina Syl'Tor (NPC)` is Velious — a disambiguator AND an apostrophe, still out of era.
+  assert.equal(isNamedMob("Tserrina Syl'Tor", 'Tower of Frozen Shadow'), false)
+  assert.equal(isNamedMob('a rat', 'The Ruins of Old Guk'), false)
+  assert.equal(isNamedMob('a froglok noble', 'Nowhere At All'), false)
 })

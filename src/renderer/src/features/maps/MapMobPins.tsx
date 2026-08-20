@@ -8,6 +8,16 @@
 // a triangular pin shape rather than a round dot. A user must never have to ask which source a
 // mark came from.
 //
+// EVERY PIN CARRIES ITS MOB'S NAME. A tooltip answers "what is this one?" only for the pin the
+// mouse is already on, which is the wrong question for a map — you read a map to find WHERE a mob
+// is, so the name has to be legible without hunting. The name is drawn in the pin's own warning
+// tone; when the mob is WATCHED the label switches to the success tone and appends the countdown,
+// so "tracked" and "untracked" differ by colour at a glance rather than by presence of text.
+//
+// ONE LABEL PER MOB, NOT PER PIN. A page may state eight spawn points (`60% @ (a,b), 40% @ (c,d)`)
+// and eight copies of the same name is a pile, not a list — so only a row's FIRST pin is labelled
+// and the rest stay bare dots. Their tooltips still name them, which is what a tooltip is for.
+//
 // IT ONLY DRAWS WHAT THE PANE IS SHOWING. The pins follow the pane's filtered mob list, so
 // typing "sarnak" narrows the map as well as the list. That is also what keeps the layer honest
 // at scale: unfiltered Kael Drakkel is 343 named mobs, several of which state eight spawn points
@@ -71,6 +81,10 @@ export function MapMobPins({ pins, vp, selectedId, clocks, now }: MapMobPinsProp
         // countdown belongs where the mob is, and the wiki has placed 6,304 of them for us - there
         // was never a reason to ask the player for a position the catalog already had.
         const clock = mapClockText(clocks?.get(row.name.trim().toLowerCase()), now ?? 0)
+        // Reference equality against the row's own array — `pinsForRows` pushes `row.pins[i]`
+        // itself, so this is "is this the first spawn point of its mob" without re-deriving an
+        // index from the React key.
+        const labelled = row.pins[0] === pin
         return (
           <Fragment key={key}>
           <span
@@ -98,26 +112,28 @@ export function MapMobPins({ pins, vp, selectedId, clocks, now }: MapMobPinsProp
               zIndex: selected ? 3 : 1
             }}
           />
-          {clock !== null && (
-            // A WATCHED MOB'S COUNTDOWN, beside its own pin. It takes the SUCCESS tone rather than
-            // the pin's warning one: the pin is "the wiki placed this", the clock is "and you are
-            // tracking it" - two different claims, and the second is the user's.
+          {labelled && (
+            // THE NAME, and the countdown when the mob is watched. The clock takes the SUCCESS
+            // tone rather than the pin's warning one: the pin is "the wiki placed this", the clock
+            // is "and you are tracking it" - two different claims, and the second is the user's.
             <span
-              data-testid="maps-mob-clock"
+              data-testid="maps-mob-label"
               data-mob={row.name}
+              {...(clock === null ? {} : { 'data-clock': clock })}
               style={{
                 position: 'absolute',
                 left: at.px + PIN_PX,
                 top: at.py - PIN_PX / 2,
                 whiteSpace: 'nowrap',
                 fontSize: 11,
-                color: clockColor,
+                color: clock === null ? pinColor : clockColor,
                 textShadow: '0 0 3px rgba(0,0,0,0.9)',
                 pointerEvents: 'none',
-                zIndex: 3
+                zIndex: clock === null ? 2 : 3
               }}
             >
-              {row.name} · {clock}
+              {row.name}
+              {clock === null ? '' : ` · ${clock}`}
             </span>
           )}
           </Fragment>
