@@ -96,8 +96,8 @@ import {
   orderRespawnRows,
   respawnCandidateNote,
   respawnInZone,
+  respawnWithWatch,
   type RespawnCandidate,
-  type RespawnPrefs,
   type RespawnRow
 } from '@shared/respawn'
 import Tooltip from '../../lib/Tooltip'
@@ -115,13 +115,6 @@ import {
 
 /** Which zone the page is showing. Component state: a view mode, not a preference. */
 type Scope = 'zone' | 'all'
-
-/** Add or update one watch, leaving the rest of the list alone. */
-function withWatch(prefs: RespawnPrefs, key: string, display: string, customSec?: number): RespawnPrefs {
-  const rest = prefs.watches.filter((w) => w.key !== key)
-  const entry = customSec === undefined ? { key, display } : { key, display, customSec }
-  return { ...prefs, watches: [...rest, entry] }
-}
 
 /**
  * ONE RECENTLY-KILLED ENTRY. `memo` because this list is the one on the page that a keystroke
@@ -421,13 +414,13 @@ export default function TimersView(): JSX.Element {
 
   const onWatch = useCallback(
     (key: string, display: string) => {
-      setPrefs(withWatch(prefsRef.current, key, display))
+      setPrefs(respawnWithWatch(prefsRef.current, key, display))
     },
     [setPrefs]
   )
   const onSetCustom = useCallback(
     (key: string, display: string, sec?: number) => {
-      setPrefs(withWatch(prefsRef.current, key, display, sec))
+      setPrefs(respawnWithWatch(prefsRef.current, key, display, sec))
     },
     [setPrefs]
   )

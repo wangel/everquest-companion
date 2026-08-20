@@ -54,7 +54,7 @@ export class CampPinsModule implements EqModule<CampSnap, CampDelta> {
    * and a module that reaches for electron-store cannot. Absent in tests, which is why the tests
    * assert the module's own state rather than the file.
    */
-  private onPinned: ((pins: CampPins) => void) | null = null
+  private onPinned: ((pins: CampPins, answered: CampPin) => void) | null = null
   private pins: CampPins = { pins: {} }
   private arm: CampArm | null = null
   private zone: string | undefined
@@ -73,7 +73,7 @@ export class CampPinsModule implements EqModule<CampSnap, CampDelta> {
   }
 
   /** Where an answered pin goes. Set by main; absent under test. */
-  setPersist(fn: (pins: CampPins) => void): void {
+  setPersist(fn: (pins: CampPins, answered: CampPin) => void): void {
     this.onPinned = fn
   }
 
@@ -144,7 +144,7 @@ export class CampPinsModule implements EqModule<CampSnap, CampDelta> {
     // WRITTEN THE INSTANT IT IS ANSWERED, not on a timer. A pin is a thing the player just did in
     // answer to a question the app asked; losing it to a crash would be losing an interaction, and
     // nothing can re-derive it (the log never says where a kill happened).
-    this.onPinned?.(this.pins)
+    this.onPinned?.(this.pins, pin)
   }
 
   /**

@@ -464,6 +464,36 @@ export function respawnWithoutWatch(prefs: RespawnPrefs, key: string): RespawnPr
 }
 
 /**
+ * Add or update ONE watch, leaving the rest of the list alone — the opposite of the function above
+ * and, from this commit, its equal in reach.
+ *
+ * IT LIVES HERE FOR `respawnWithoutWatch`'s STATED REASON: "so 'stop watching this' has ONE
+ * definition [and the three surfaces] cannot drift into three ideas of what the button did." The
+ * ADD half had been a private helper in TimersView while a second caller was about to appear in
+ * main (answering a camp prompt is an explicit "I care about this mob"), and two spellings of one
+ * list operation is exactly the drift that header warns about.
+ *
+ * The key is canonicalized the way `normalizeWatch` canonicalizes what it stores (law 2 -
+ * canonicalize at boundaries), so a row's `key`, a hand-edited settings file and a name folded off
+ * a death line all land on the same entry. `display` is the name as the log printed it.
+ *
+ * An existing watch is REPLACED rather than duplicated, and a `customSec` already set is NOT
+ * carried over: the caller passes what the entry should now say, because "re-watch with no custom
+ * time" and "keep the number I typed" are different intentions and only the caller knows which.
+ */
+export function respawnWithWatch(
+  prefs: RespawnPrefs,
+  key: string,
+  display: string,
+  customSec?: number
+): RespawnPrefs {
+  const want = key.trim().toLowerCase()
+  const rest = prefs.watches.filter((w) => w.key !== want)
+  const entry = customSec === undefined ? { key: want, display } : { key: want, display, customSec }
+  return { ...prefs, watches: [...rest, entry] }
+}
+
+/**
  * The word on the control, one spelling for all three surfaces — and now the WHOLE of it.
  *
  * ROUND 7 ADDENDUM (owner): the tooltip is gone. `respawnUnwatchTitle` used to state the two

@@ -20,6 +20,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { CampPinsModule } from '../src/main/modules/campPins'
 import { CAMP_QUIET_MS, CAMP_SHOW_MS, campKey } from '../src/shared/campPins'
+import { respawnWithWatch, respawnWithoutWatch, normalizeRespawnPrefs } from '../src/shared/respawn'
 import type { LogEvent } from '../src/shared/logEvents'
 
 const T0 = 1_770_000_000_000
@@ -176,4 +177,42 @@ test('the module reports its OWN revision, so an out-of-band pin is not deduped 
   const before = m.snapshot(T0).seq
   m.setPins({ pins: {} })
   assert.ok(m.snapshot(T0).seq > before, 'a seeded write advanced the revision')
+})
+
+// --- ANSWERING IS AN OPT-IN -------------------------------------------------
+//
+// The line that makes the feature worth having: typing `/loc` in answer to "this named just died"
+// puts the mob on the respawn watch list, which is what turns a dot on a map into a countdown -
+// and what fills the list in for every mob the wiki roster misses. `log/campPersist.ts` performs
+// it (it needs the store, so it cannot live in the fold); these pin the pure half it stands on.
+
+test('respawnWithWatch: adds one, canonicalizes the key, and replaces rather than duplicates', () => {
+  const empty = normalizeRespawnPrefs({})
+  const one = respawnWithWatch(empty, 'the ghoul lord', 'the ghoul lord')
+  assert.deepEqual(one.watches, [{ key: 'the ghoul lord', display: 'the ghoul lord' }])
+  // The key folds (law 2 - canonicalize at boundaries), so a name off a death line and a
+  // hand-edited settings file land on the same entry.
+  const mixed = respawnWithWatch(empty, '  The Ghoul LORD ', 'The Ghoul Lord')
+  assert.equal(mixed.watches[0].key, 'the ghoul lord')
+  // Re-adding replaces; the list does not grow.
+  const again = respawnWithWatch(one, 'the ghoul lord', 'the ghoul lord')
+  assert.equal(again.watches.length, 1)
+})
+
+test('respawnWithWatch: it is the exact inverse of respawnWithoutWatch', () => {
+  // The two live together so "watch" and "stop watching" cannot drift into different ideas of
+  // what the list is - which is the reason respawnWithoutWatch's own header gives for existing.
+  const empty = normalizeRespawnPrefs({})
+  const added = respawnWithWatch(empty, 'Gorgalosk', 'Gorgalosk')
+  assert.deepEqual(respawnWithoutWatch(added, 'Gorgalosk').watches, [])
+})
+
+test('respawnWithWatch: a customSec is carried only when the caller passes one', () => {
+  // "Re-watch with no custom time" and "keep the number I typed" are different intentions and only
+  // the caller knows which, so this function never invents the second. `campPersist` relies on it:
+  // it refuses to touch a mob already watched precisely so a camp answer cannot discard a typed
+  // respawn time.
+  const empty = normalizeRespawnPrefs({})
+  assert.equal(respawnWithWatch(empty, 'a', 'a').watches[0].customSec, undefined)
+  assert.equal(respawnWithWatch(empty, 'a', 'a', 540).watches[0].customSec, 540)
 })
