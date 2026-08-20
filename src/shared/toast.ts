@@ -99,7 +99,7 @@ export function normalizeToastConfig(v: unknown): ToastOverlayConfig {
  * It carries no item card — a level is not a reward you can hold — so it is the first kind whose
  * click target is the card itself rather than an embedded reward block.
  */
-export type ToastKind = 'bossKill' | 'skyQuestComplete' | 'levelUp' | 'intro'
+export type ToastKind = 'bossKill' | 'skyQuestComplete' | 'levelUp' | 'campPrompt' | 'intro'
 
 /**
  * The kinds a PRODUCER may send over `toast:show` — deliberately NOT every member of the union.
@@ -109,7 +109,14 @@ export type ToastKind = 'bossKill' | 'skyQuestComplete' | 'levelUp' | 'intro'
  * draw. The union is what the CARD can render; this list is what the CHANNEL accepts, and they
  * are not the same question.
  */
-export const TOAST_KINDS: ToastKind[] = ['bossKill', 'skyQuestComplete', 'levelUp']
+export const TOAST_KINDS: ToastKind[] = ['bossKill', 'skyQuestComplete', 'levelUp', 'campPrompt']
+
+// 'campPrompt' (shared/campPins.ts) is the one member that is not a CELEBRATION - it is a
+// QUESTION, and it is here because it needs exactly what this channel already provides and
+// nothing else: a card the player can see while EverQuest is foreground. The main window is
+// behind the game, so a prompt drawn there is a prompt nobody reads; that was measured the
+// honest way, by the owner missing one. It carries no reward block and no focus link - a click
+// would take you away from the corpse you are standing on.
 
 /**
  * The reward item, as the toast draws it. Everything is RESOLVED IN MAIN and pre-formatted:
