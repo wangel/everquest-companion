@@ -33,6 +33,7 @@ import type { EqModule } from './types'
 import type { LogEvent } from '../../shared/logEvents'
 import { zoneTier } from '../log/parser'
 import { isNamedMob } from '../namedDb'
+import type { CampDelta, CampSnap } from '../../shared/campPins'
 import {
   CAMP_QUIET_MS,
   armIsLive,
@@ -44,20 +45,17 @@ import {
   type CampPins
 } from '../../shared/campPins'
 
-/** What a surface is told. `prompt` is absent in every state but the one. */
-export interface CampSnap {
-  /** Every camp this character has pinned. */
-  pins: CampPins
-  /** The prompt to draw right now, if the grace has passed and the show window has not closed. */
-  prompt?: { mob: string; zone: string; killedTs: number }
-  /** The zone the fold stands in, so a surface can show this zone's camps without a second source. */
-  zone: string | null
-}
-
-export type CampDelta = CampSnap
-
 export class CampPinsModule implements EqModule<CampSnap, CampDelta> {
   readonly id = 'campPins'
+  /**
+   * Told when a pin is ANSWERED, so main can write it.
+   *
+   * A callback rather than a store import, for the reason every module here keeps: the fold has to
+   * stay constructible under plain node (the bench and tests/foldDeterminism.test.mts both do it),
+   * and a module that reaches for electron-store cannot. Absent in tests, which is why the tests
+   * assert the module's own state rather than the file.
+   */
+  private onPinned: ((pins: CampPins) => void) | null = null
   private pins: CampPins = { pins: {} }
   private arm: CampArm | null = null
   private zone: string | undefined
@@ -73,6 +71,11 @@ export class CampPinsModule implements EqModule<CampSnap, CampDelta> {
     this.zone = undefined
     this.quietUntil = new Map()
     this.dirty = false
+  }
+
+  /** Where an answered pin goes. Set by main; absent under test. */
+  setPersist(fn: (pins: CampPins) => void): void {
+    this.onPinned = fn
   }
 
   /** Seed the persisted camps. Set at wiring, before the fold. */
@@ -139,6 +142,10 @@ export class CampPinsModule implements EqModule<CampSnap, CampDelta> {
     this.pins = setCampPin(this.pins, pin)
     this.arm = null
     this.bump()
+    // WRITTEN THE INSTANT IT IS ANSWERED, not on a timer. A pin is a thing the player just did in
+    // answer to a question the app asked; losing it to a crash would be losing an interaction, and
+    // nothing can re-derive it (the log never says where a kill happened).
+    this.onPinned?.(this.pins)
   }
 
   /**

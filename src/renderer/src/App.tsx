@@ -66,6 +66,7 @@ import { setCurrentView } from './lib/currentView'
 import { useModule } from './lib/useModule'
 import { dwellView, useViewDwell } from './lib/telemetry'
 import AlertPlayer, { fireAppSignal } from './features/alerts/player'
+import { CampPromptHost } from './features/maps/CampPrompt'
 import { getBossData } from './data'
 import { useBossKills } from './features/bosses/useBossKills'
 import type { TargetStatus } from './features/bosses/bossStatus'
@@ -265,6 +266,7 @@ function ViewContent({
     </>
   )
 }
+
 
 /**
  * The two ALWAYS-MOUNTED celebration watches, so both fire on any tab.
@@ -642,6 +644,9 @@ export default function App(): JSX.Element {
 
       {/* Always-mounted: plays fired alert sounds regardless of the active tab. */}
       <AlertPlayer />
+      {/* Always-mounted for AlertPlayer's reason: a named dies while you are on whatever tab you
+          were already on, and a prompt only the Maps tab could show is a prompt nobody sees. */}
+      <CampPromptHost />
 
       <CelebrationToasts
         defeatToast={defeatToast}

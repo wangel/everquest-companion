@@ -22,6 +22,7 @@ import {
   resolveEqDir,
   tailSurvivesRootChange
 } from './log/config'
+import { seedCampPins } from './log/campPersist'
 import {
   markHistoryDirty,
   persistLiveHistory,
@@ -276,6 +277,10 @@ function resetWorldFor(ref: CharacterRef): void {
   // JOS-231 reason: it is per character, it must be in place before the scan folds a single line,
   // and it seeds the ARCHIVED buckets ONLY — `live` is what the scan is about to re-derive.
   seedArchivedHistory(ref)
+  // WHERE THIS CHARACTER CAMPS (log/campPersist.ts). Beside the history seed and for the same
+  // reason: per character, and in place before the scan folds a line — a replay must not re-ask
+  // questions the player answered weeks ago.
+  seedCampPins(ref)
   epoch.reset()
   // The offline-gap detector is per-LOG state (a rolling window of recent timestamps + the
   // pending camp), so it resets alongside the epoch detector: a new character's first login

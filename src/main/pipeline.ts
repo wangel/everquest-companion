@@ -181,6 +181,7 @@ export const lootModule = modules.loot
 export const turnInsModule = modules.turnIns
 export const killsModule = modules.kills
 export const respawnModule = modules.respawn
+export const campPinsModule = modules.campPins
 export const progressionModule = modules.progression
 export const levelingModule = modules.leveling
 export const characterModule = modules.character

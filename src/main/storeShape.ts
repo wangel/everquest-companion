@@ -15,6 +15,7 @@ import type { TelemetryPrefs } from '../shared/telemetry'
 import type { PerfHudPrefs } from '../shared/perf'
 import type { LogArchivePrefs } from '../shared/logArchive'
 import type { LogHistory } from '../shared/logHistory'
+import type { CampPins } from '../shared/campPins'
 import type { ProcessPriorityPrefs } from '../shared/processPriority'
 import type { ResistPrefs } from '../shared/resistPrefs'
 import type { GraphicsPrefs } from '../shared/graphicsPrefs'
@@ -247,6 +248,18 @@ export interface StoreShape {
    * `storeLogHistory.ts` because store.ts is at the 400-code-line ceiling.
    */
   logHistory?: Record<string, LogHistory>
+  /**
+   * WHERE YOU CAMP A NAMED (shared/campPins.ts), per character id. The `/loc` you typed in answer
+   * to "a named just died", keyed by mob and zone together.
+   *
+   * ABSENT MEANS "you have pinned nothing", which is what every store written before this commit
+   * meant - another additive optional key on the carve-out above: no schema bump, no migration.
+   *
+   * NOT A CACHE, unlike `logHistory` beside it: nothing can re-derive a pin, because the log never
+   * states where a kill happened. That is the whole reason the feature asks. Accessors live in
+   * `storeCampPins.ts` because store.ts is at the 400-code-line ceiling.
+   */
+  campPins?: Record<string, CampPins>
   /**
    * WHICH CASTERS TEACH THE RESIST PROFILES (schema migration 13→14; JOS-385,
    * shared/resistPrefs.ts). `{ includeNpcCasters: true }` — charmed pets and NPC casters count as

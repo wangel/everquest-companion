@@ -184,3 +184,19 @@ export function promptVisible(arm: CampArm | null, now: number): boolean {
   const age = now - arm.killedTs
   return age >= CAMP_GRACE_MS && age < CAMP_SHOW_MS
 }
+
+/** What a surface is told. `prompt` is absent in every state but the one. */
+export interface CampSnap {
+  /** Every camp this character has pinned. */
+  pins: CampPins
+  /** The prompt to draw right now, if the grace has passed and the show window has not closed. */
+  prompt?: { mob: string; zone: string; killedTs: number }
+  /** The zone the fold stands in, so a surface can show this zone's camps without a second source. */
+  zone: string | null
+}
+
+/**
+ * A delta IS a snapshot here: the state is small and always complete, so there is nothing to
+ * append and no way for a renderer to hold a partial view.
+ */
+export type CampDelta = CampSnap
