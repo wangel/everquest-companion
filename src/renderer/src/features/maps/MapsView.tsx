@@ -48,6 +48,7 @@ import type { CharacterDelta, CharacterSnap } from '@shared/types'
 import type { MapBounds, MapData, MapPackPrefs, ZoneShort } from '@shared/maps'
 import { zoneShortName } from '@shared/zones'
 import { useModule } from '../../lib/useModule'
+import type { LocDelta, LocReading, LocSnap } from '@shared/maps'
 import { trackFeature } from '../../lib/telemetry'
 import MapBody, { useSearchJump } from './MapBody'
 import { useZonePane } from './useMapPane'
@@ -76,6 +77,26 @@ const EMPTY_BOUNDS: MapBounds = { minX: -1, maxX: 1, minY: -1, maxY: 1, minZ: 0,
 const LAYER_NAME: Record<number, string> = { 0: 'Geometry', 1: 'Labels', 2: 'Legend', 3: 'Extra' }
 
 /** The character module's delta is a partial merge (see main/modules/character.ts). */
+/**
+ * The `/loc` module's delta is the whole answer, not an increment: there is ONE reading and a newer
+ * one replaces it (src/main/modules/loc.ts explains why there is no trail to append to).
+ */
+function applyLocDelta(_state: LocSnap, delta: LocDelta): LocSnap {
+  return { current: delta.current }
+}
+
+/**
+ * The newest `/loc` the log has printed, or null when the player has never typed one — the
+ * ordinary case, and why the paste field stays.
+ *
+ * Its own hook rather than a line in `MapsView` because that function sits at the repo's
+ * complexity ceiling of 12, and the stated answer to a function at its ceiling here is to move
+ * something out rather than widen the rule.
+ */
+function useLocReading(): LocReading | null {
+  return useModule<LocSnap, LocDelta>('loc', applyLocDelta)?.current ?? null
+}
+
 function applyCharacterDelta(state: CharacterSnap, delta: CharacterDelta): CharacterSnap {
   return { ...state, ...delta }
 }
@@ -363,6 +384,8 @@ export default function MapsView(): JSX.Element {
   // WHERE YOU ARE. The character module owns the raw display zone off the `zone` log event; it
   // is undefined until the log prints one, and that absence is a state this view renders.
   const raw = useModule<CharacterSnap, CharacterDelta>('character', applyCharacterDelta)?.zone
+  // WHERE YOU SAID YOU WERE, from the log's own `/loc` line.
+  const reading = useLocReading()
   const { zone, auto, mode, pick, followCurrent } = useZoneSelection(raw)
   const [prefs, setPrefs] = useState<MapPackPrefs>(loadPackPrefs)
   const [layers, setLayers] = useState<LayerMask>(DEFAULT_LAYERS)
@@ -392,7 +415,7 @@ export default function MapsView(): JSX.Element {
   // THE POSITION YOU TOLD IT (JOS-98). Keyed on the zone actually DRAWN, never the one being
   // fetched: a marker attributed to a map that has not loaded would be drawn against the previous
   // zone's bounds for a frame — a dot in the wrong place, which is the one thing this must not do.
-  const loc = useLocMarker(data?.zone ?? null, vp)
+  const loc = useLocMarker(data?.zone ?? null, vp, reading)
 
   // THE SIDEBAR. Open by default, remembered in `eq.maps.pane`, closed from its own header. Its
   // filtered rows are derived ONCE and read by both the list and the surface's pins.
@@ -426,6 +449,7 @@ export default function MapsView(): JSX.Element {
           savePackPrefs(p)
         }}
         locMarker={loc.marker}
+        locMarkerTs={loc.markerTs}
         onPlaceLoc={loc.place}
         onShowLoc={loc.show}
         onClearLoc={loc.clear}

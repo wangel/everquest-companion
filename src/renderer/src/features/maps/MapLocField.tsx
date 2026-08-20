@@ -1,10 +1,19 @@
 // THE ONE PLACE A POSITION CAN ENTER THIS APP (JOS-98) — type or paste a `/loc`, get a marker.
 //
 // WHY A TEXT BOX ON A TOOLBAR THAT "DESCRIBES THE DRAWING". Because this control describes the
-// drawing: it states the one position drawn on the surface, and it is the only way to put one
-// there. The log never says where you are standing, so the alternative to a box is no marker at
-// all — which is what the header used to say, in the flat voice of something that could not be
-// fixed. It can be fixed; the user just has to say the number.
+// drawing: it states the one position drawn on the surface, and it is one of the two ways to put
+// one there.
+//
+// IT IS NO LONGER THE ONLY WAY, AND THE REASON IT WAS IS WORTH KEEPING. This header used to say
+// "the log never says where you are standing, so the alternative to a box is no marker at all",
+// and locMarker.ts still carries the measurement it rested on: `Your Location` appeared ZERO
+// times across a 116.8 MB log. The measurement was true and the conclusion was not — nobody had
+// typed `/loc`. The game DOES log it (shared/maps.ts LocEvent has the sample that settled it), so
+// the marker now moves on its own whenever a player types the command in game.
+//
+// THE BOX STAYS ANYWAY, and not out of sentiment: the log can only ever say where you ARE. Typing
+// a position is how you mark somewhere you are NOT — a camp you are walking to, a spot read off a
+// wiki page, a corpse you are coming back for. Those are questions the log cannot answer at all.
 //
 // THE FIELD EMPTIES ON SUCCESS AND THE CHIP TAKES OVER. Two controls, two jobs: the box is where a
 // loc goes IN, the chip is what the app currently BELIEVES — stated in the game's own words and
@@ -33,10 +42,20 @@ import CancelIcon from '@mui/icons-material/Cancel'
 import PlaceIcon from '@mui/icons-material/Place'
 import type { EqLoc } from './mapGeometry'
 import { formatLoc, parseLoc } from './locMarker'
+import { formatAge, formatDateTime } from '../../lib/formatDate'
 
 export interface MapLocFieldProps {
   /** This zone's remembered marker, or null when it has none. */
   marker: EqLoc | null
+  /**
+   * When the game printed the `/loc` this marker came from, or null when it was typed here.
+   *
+   * SHOWN, ALWAYS, when it exists. `/loc` answers only when asked, so a logged marker is a fact
+   * about an instant and can be days old — after a historical fold it usually is. A marker that
+   * does not say how old it is reads as "you are here", which is the one thing this app cannot
+   * know (law 6).
+   */
+  markerTs: number | null
   /** A well-formed reading was entered — place it, and remember it for this zone. */
   onPlace: (loc: EqLoc) => void
   /** Centre the view on the marker that is already placed. */
@@ -45,7 +64,13 @@ export interface MapLocFieldProps {
   onClear: () => void
 }
 
-export default function MapLocField({ marker, onPlace, onShow, onClear }: MapLocFieldProps): JSX.Element {
+export default function MapLocField({
+  marker,
+  markerTs,
+  onPlace,
+  onShow,
+  onClear
+}: MapLocFieldProps): JSX.Element {
   const [text, setText] = useState('')
   const [error, setError] = useState<string | null>(null)
 
@@ -106,8 +131,12 @@ export default function MapLocField({ marker, onPlace, onShow, onClear }: MapLoc
           variant="outlined"
           icon={<PlaceIcon />}
           data-testid="maps-loc-chip"
-          title="The location you entered. Click to centre on it; ✕ to remove it."
-          label={formatLoc(marker)}
+          title={
+            markerTs == null
+              ? 'The location you entered. Click to centre on it; ✕ to remove it.'
+              : `From the /loc you typed in game at ${formatDateTime(markerTs)}. Type /loc again to update it. Click to centre on it; ✕ to remove it.`
+          }
+          label={markerTs == null ? formatLoc(marker) : `${formatLoc(marker)} · ${formatAge(markerTs)}`}
           onClick={onShow}
           onDelete={onClear}
           // NAMED, because the chip carries TWO icons and they do OPPOSITE things: the leading

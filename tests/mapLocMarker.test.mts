@@ -42,7 +42,9 @@ import {
   parseLoc,
   saveLocMarkers,
   setLocMarker,
-  type LocStore
+  type LocStore,
+  locFromReading,
+  sameLoc
 } from '../src/renderer/src/features/maps/locMarker'
 import { fit, mapFromLoc, project } from '../src/renderer/src/features/maps/mapGeometry'
 import { MOB_CATALOG } from '../src/renderer/src/features/mobs/mobSearch'
@@ -320,3 +322,33 @@ test('the key is the one the app has shipped — a rename would silently drop ev
   saveLocMarkers({ oasis: { ns: 1, ew: 2, z: 3 } }, store)
   assert.equal(store.data['eq.maps.loc'], '{"oasis":{"ns":1,"ew":2,"z":3}}')
 })
+
+// --- THE LOG-FED MARKER -----------------------------------------------------
+//
+// `/loc` turned out to be in the log after all (shared/maps.ts LocEvent carries the sample that
+// settled it), so a marker can now arrive without anybody pasting. These two are the whole seam
+// between a folded reading and the value handed to `mapFromLoc`.
+
+test('locFromReading: a folded reading projects to the marker shape, and drops the rest', () => {
+  const reading = { ts: 1_770_000_000_000, ns: 1918.98, ew: 144.79, z: 30.07, zone: 'Freeport' }
+  assert.deepEqual(locFromReading(reading), { ns: 1918.98, ew: 144.79, z: 30.07 })
+  // The TIMESTAMP and the ZONE must not ride along into a value that is handed to `mapFromLoc`:
+  // that function takes a position, and a fourth field arriving on a reading later (a heading, an
+  // accuracy) would otherwise be carried in by an implicit spread nobody rewrote.
+  assert.deepEqual(Object.keys(locFromReading(reading)).sort(), ['ew', 'ns', 'z'])
+})
+
+test('sameLoc: exact on all three axes, and null is never a match', () => {
+  const a = { ns: 1, ew: 2, z: 3 }
+  assert.equal(sameLoc(a, { ns: 1, ew: 2, z: 3 }), true)
+  // NOT a tolerance. The caller asks "is the marker on screen the reading the log just printed",
+  // and both came from the same two-decimal sentence - so a near miss is a DIFFERENT reading, and
+  // calling it a match would put one reading's timestamp on another's coordinates.
+  assert.equal(sameLoc(a, { ns: 1.01, ew: 2, z: 3 }), false)
+  assert.equal(sameLoc(a, { ns: 1, ew: 2, z: 3.0001 }), false)
+  // A missing marker and a missing reading are both "no", never "equal because both are nothing".
+  assert.equal(sameLoc(null, a), false)
+  assert.equal(sameLoc(a, null), false)
+  assert.equal(sameLoc(null, null), false)
+})
+

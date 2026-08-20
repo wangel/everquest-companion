@@ -27,8 +27,10 @@
 // THE ONE BOX THAT IS NOT A CONTROL OVER THE MAP FILE is the `/loc` field (JOS-98,
 // MapLocField.tsx): it states, and lets you set, the single position the app has been TOLD. It
 // earns its place on a row about the drawing because that is exactly what it is — the marker is
-// drawn on the surface, and this is the only way one gets there. It is gated on `hasMap` with the
-// rest: a coordinate typed against no map has nowhere to land.
+// drawn on the surface. It is no longer the ONLY way one gets there (the game logs `/loc` after
+// all — MapLocField.tsx's header carries that story), but it is still the only way to mark
+// somewhere you are NOT. Gated on `hasMap` with the rest: a coordinate typed against no map has
+// nowhere to land.
 //
 // NOTHING HERE SEARCHES. The bar used to carry a `Search labels…` box, a This zone / All zones
 // scope toggle and a sidebar toggle called `Zone` — three controls asking the same question the
@@ -251,6 +253,8 @@ export interface MapToolbarProps {
   onPrefs: (prefs: MapPackPrefs) => void
   /** This zone's typed-/loc marker, or null when it has none (JOS-98). */
   locMarker: EqLoc | null
+  /** When the game printed that marker's `/loc`, or null when it was typed into the app. */
+  locMarkerTs: number | null
   onPlaceLoc: (loc: EqLoc) => void
   onShowLoc: () => void
   onClearLoc: () => void
@@ -315,7 +319,7 @@ function PackSelect({
 function DrawnControls(props: MapToolbarProps): JSX.Element {
   const { layers, onLayers, bands, floor, onFloor, packs, prefs, onPrefs } = props
   const { zoomedIn, onZoom, onFit } = props
-  const { locMarker, onPlaceLoc, onShowLoc, onClearLoc } = props
+  const { locMarker, locMarkerTs, onPlaceLoc, onShowLoc, onClearLoc } = props
   const on = TOGGLEABLE.filter((t) => layers[t.layer]).map((t) => String(t.layer))
   return (
     <>
@@ -387,7 +391,13 @@ function DrawnControls(props: MapToolbarProps): JSX.Element {
 
       {/* The one position the app can hold, and the only way one gets in (JOS-98). It belongs on
           this row for the row's own reason: it describes what is DRAWN on the surface. */}
-      <MapLocField marker={locMarker} onPlace={onPlaceLoc} onShow={onShowLoc} onClear={onClearLoc} />
+      <MapLocField
+        marker={locMarker}
+        markerTs={locMarkerTs}
+        onPlace={onPlaceLoc}
+        onShow={onShowLoc}
+        onClear={onClearLoc}
+      />
     </>
   )
 }

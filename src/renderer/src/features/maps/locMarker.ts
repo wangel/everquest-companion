@@ -37,6 +37,7 @@
 // first number the game prints is the north/south reading, not an x. `EqLoc` names its fields
 // `ns`/`ew` for that reason and nothing here ever calls them x and y.
 
+import type { LocReading } from '@shared/maps'
 import type { EqLoc } from './mapGeometry'
 
 /** One remembered marker per zone stem, keyed by `ZoneShort`. One marker per zone is the scope. */
@@ -179,3 +180,33 @@ export function locMarkerFor(marks: LocMarkers, zone: string | null): EqLoc | nu
   if (zone == null) return null
   return marks[zone] ?? null
 }
+
+// ---------------------------------------------------------------------------
+// THE LOG-FED MARKER (the `/loc` line is in the log after all — shared/maps.ts LocEvent)
+// ---------------------------------------------------------------------------
+
+/**
+ * A folded `/loc` reading as this module's own coordinate shape.
+ *
+ * The reading and `EqLoc` carry the same three numbers under the same names, so this is a
+ * projection rather than a conversion — and it is written down anyway, because the moment a
+ * FOURTH field lands on a reading (a heading, an accuracy) an implicit spread would carry it into
+ * a value that is handed straight to `mapFromLoc`.
+ */
+export function locFromReading(r: LocReading): EqLoc {
+  return { ns: r.ns, ew: r.ew, z: r.z }
+}
+
+/**
+ * Is this the same position? Exact equality on all three axes.
+ *
+ * NOT a tolerance, deliberately. The only caller asks "is the marker on screen the one the log
+ * just printed", and both sides came from the same two-decimal sentence — so anything that is not
+ * bit-identical is a DIFFERENT reading, and treating a near-miss as a match would attach one
+ * reading's timestamp to another's coordinates.
+ */
+export function sameLoc(a: EqLoc | null, b: EqLoc | null): boolean {
+  if (a == null || b == null) return false
+  return a.ns === b.ns && a.ew === b.ew && a.z === b.z
+}
+
