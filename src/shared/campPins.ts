@@ -141,10 +141,15 @@ export function campsInZone(pins: CampPins, zone: string): CampPin[] {
 // THE PROMPT
 // ---------------------------------------------------------------------------
 
-/** GRACE: a `/loc` this soon after the kill answers it without a prompt ever being drawn. */
-export const CAMP_GRACE_MS = 10_000
-/** SHOW: how long the prompt stands, and how long a `/loc` can still answer it. */
-export const CAMP_SHOW_MS = 60_000
+/**
+ * SHOW: how long the question stands, and how long a `/loc` can still answer it.
+ *
+ * MEASURED AND RAISED FROM 60 s. The window counts from the DEATH, so a card that appeared late
+ * had already spent part of its life; at 60 s a player mid-chain-pull could not realistically
+ * finish the fight and answer. 90 s is long enough to loot a named and its adds, and still short
+ * enough that a stale question cannot collect a `/loc` typed minutes later for something else.
+ */
+export const CAMP_SHOW_MS = 90_000
 /** QUIET: after an ignored prompt, that mob asks nothing again for this long. */
 export const CAMP_QUIET_MS = 300_000
 
@@ -164,25 +169,23 @@ export interface CampArm {
 }
 
 /**
- * Is the arm still live at `now` — i.e. would a `/loc` right now answer it?
+ * Is the question live at `now` — both "would a `/loc` answer it" and "should a card be drawn"?
  *
- * The window opens at the kill and closes at SHOW. GRACE is NOT part of this test: a `/loc` inside
- * the grace period still answers the arm, it just never drew a card to answer.
+ * ONE PREDICATE, BECAUSE THE GRACE PERIOD IS GONE. It was borrowed from petNudge, where the app
+ * waits ten seconds so that a player who answers immediately never sees the question. MEASURED on
+ * a real session, that reasoning does not survive contact with a chain pull: a named died, the
+ * card was still ten seconds from appearing, the player killed the NEXT named, and the first
+ * card finally arrived 28 seconds after its own kill - in the middle of a different fight. The
+ * grace was protecting against a redundant flash and paying for it with the card's usefulness.
+ *
+ * So the question is asked the instant the mob dies. A player who was going to type `/loc` anyway
+ * still sees only one card: the ask is replaced in place by its own receipt (the toast channel
+ * dedupes on id), which is what the redundant-flash worry was really about.
  */
 export function armIsLive(arm: CampArm | null, now: number): boolean {
-  return arm !== null && now - arm.killedTs < CAMP_SHOW_MS
-}
-
-/**
- * Should a surface be DRAWING a prompt at `now`? True only after GRACE and before SHOW.
- *
- * The gap between "the arm is live" and "the card is up" is the whole of petNudge's first lesson:
- * a player who answers immediately should never have seen the question.
- */
-export function promptVisible(arm: CampArm | null, now: number): boolean {
   if (arm === null) return false
   const age = now - arm.killedTs
-  return age >= CAMP_GRACE_MS && age < CAMP_SHOW_MS
+  return age >= 0 && age < CAMP_SHOW_MS
 }
 
 /** What a surface is told. `prompt` is absent in every state but the one. */

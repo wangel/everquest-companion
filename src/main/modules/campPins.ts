@@ -38,7 +38,6 @@ import {
   CAMP_QUIET_MS,
   armIsLive,
   campKey,
-  promptVisible,
   setCampPin,
   type CampArm,
   type CampPin,
@@ -156,11 +155,7 @@ export class CampPinsModule implements EqModule<CampSnap, CampDelta> {
   onTick(now: number): void {
     const arm = this.arm
     if (arm === null) return
-    if (armIsLive(arm, now)) {
-      // Crossing out of GRACE makes the card appear, which a surface has to be told about.
-      if (promptVisible(arm, now)) this.bump()
-      return
-    }
+    if (armIsLive(arm, now)) return
     // IGNORED. It goes quiet rather than asking again on the next spawn - the player said no by
     // saying nothing, and a prompt that reappears every nine minutes is the nag petNudge's QUIET
     // exists to prevent.
@@ -186,7 +181,7 @@ export class CampPinsModule implements EqModule<CampSnap, CampDelta> {
     return {
       pins: this.pins,
       zone: this.zone ?? null,
-      ...(promptVisible(arm, now) && arm !== null
+      ...(armIsLive(arm, now) && arm !== null
         ? { prompt: { mob: arm.mob, zone: arm.zone, killedTs: arm.killedTs } }
         : {})
     }
