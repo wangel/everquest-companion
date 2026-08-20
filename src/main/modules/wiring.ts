@@ -29,6 +29,7 @@ import { ComboModule } from './combo'
 import { RosterModule } from './roster'
 import { LootModule } from './loot'
 import { LocModule } from './loc'
+import { CampPinsModule } from './campPins'
 import { TurnInsModule } from './turnins'
 import { ClassUnlocksModule } from './classUnlocks'
 import { KillsModule } from './kills'
@@ -105,6 +106,7 @@ export interface ModuleWiring {
   roster: RosterModule
   loot: LootModule
   loc: LocModule
+  campPins: CampPinsModule
   turnIns: TurnInsModule
   classUnlocks: ClassUnlocksModule
   kills: KillsModule
@@ -171,6 +173,10 @@ export function createModules(deps: ModuleWiringDeps = {}): ModuleWiring {
   // same shape (append-only, zone-tagged rows) and because a spawn-point observation is a kill
   // joined to one of these.
   const loc = new LocModule()
+  // WHERE YOU CAMP A NAMED (shared/campPins.ts). Beside the `/loc` module because it consumes what
+  // that one parses, and after the kills module for the same reason the bus delivers in this order:
+  // a death arms the question, a `/loc` answers it.
+  const campPins = new CampPinsModule()
   const turnIns = new TurnInsModule()
   // WHICH CLASSES THIS CHARACTER MAY RUN AS A PRIMARY (JOS-148) — the observed half of the Sky
   // tab's class-unlock reading, folded from the one line that states an unlock outright. Beside
@@ -267,6 +273,7 @@ export function createModules(deps: ModuleWiringDeps = {}): ModuleWiring {
     roster,
     loot,
     loc,
+    campPins,
     turnIns,
     classUnlocks,
     kills,
@@ -294,6 +301,7 @@ export function createModules(deps: ModuleWiringDeps = {}): ModuleWiring {
       roster,
       loot,
       loc,
+      campPins,
       turnIns,
       // Position is free: it folds one line kind no other module reads, and nothing reads its
       // state within a delivery. Beside turnIns because that is where a reader looks for it.
