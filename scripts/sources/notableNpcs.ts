@@ -17,6 +17,15 @@ export interface NamedRow {
   name: string
   /** The link TARGET, canonicalized. Absent for a red link (the wiki names a mob it has no page for). */
   page?: string
+  /**
+   * The wiki badges this page as out of the current era — Kunark, Velious, content this game has
+   * not shipped. Present ONLY when true: `action=eqlmetadata` answers `false` both for classic
+   * content and for a page nobody has classified, so a false is silence, not a claim that the mob
+   * is in era. `scripts/scrape-named.ts` carries the argument; scrape-page-era.ts carries the
+   * citation. A consumer wanting "mobs that can actually die in this game" filters on this being
+   * absent, and is right to treat a red-link row (no page, so no verdict) the same way.
+   */
+  outOfEra?: true
 }
 
 /**

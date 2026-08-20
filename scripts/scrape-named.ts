@@ -78,14 +78,33 @@ const OUT_PATH = resolve(HERE, '../src/main/data/named.json')
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
-/** One serialized GET with exponential backoff on 429/5xx (honours Retry-After). */
-async function api<T>(params: Record<string, string>): Promise<T> {
-  const url = `${API}?${new URLSearchParams({ format: 'json', formatversion: '2', ...params }).toString()}`
+/** GET puts the params in the query string; POST puts them in the body. One shape either way. */
+function requestFor(params: Record<string, string>, method: 'GET' | 'POST'): [string, RequestInit] {
+  const body = new URLSearchParams({ format: 'json', formatversion: '2', ...params })
+  if (method === 'GET') return [`${API}?${body.toString()}`, { headers: { 'User-Agent': UA } }]
+  return [
+    API,
+    {
+      method: 'POST',
+      headers: { 'User-Agent': UA, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString()
+    }
+  ]
+}
+
+/**
+ * One serialized request with exponential backoff on 429/5xx (honours Retry-After).
+ *
+ * POST exists for exactly one caller, the same one it exists for in scrape-page-era.ts:
+ * `action=eqlmetadata` is POST-only, and 450 titles would not fit a query string anyway.
+ */
+async function api<T>(params: Record<string, string>, method: 'GET' | 'POST' = 'GET'): Promise<T> {
+  const [url, init] = requestFor(params, method)
   let wait = 1000
   for (let attempt = 0; ; attempt++) {
     let res: Response
     try {
-      res = await fetch(url, { headers: { 'User-Agent': UA } })
+      res = await fetch(url, init)
     } catch (err) {
       if (attempt >= MAX_RETRIES) throw err
       await sleep(wait)
@@ -112,6 +131,8 @@ interface NamedData {
   scrapedAt: string
   zoneCount: number
   namedCount: number
+  /** How many rows the wiki badges out of era. See NamedRow.outOfEra. */
+  outOfEraCount: number
   zones: Record<string, NamedRow[]>
 }
 
@@ -119,6 +140,97 @@ interface NamedData {
 interface ParseReply {
   parse?: { text?: string }
   error?: { code?: string }
+}
+
+// ---------------------------------------------------------------------------
+// THE ERA PASS — which of these mobs are actually in EQ Legends
+// ---------------------------------------------------------------------------
+//
+// The roster above is the wiki's judgement about what is worth camping, and the wiki documents
+// content this game has not shipped: the biggest rosters in the first scrape were Western Wastes
+// (50), Velketor's Labyrinth (29) and Temple of Veeshan (27) — Velious, all of it, alongside
+// Kunark's Frontier Mountains and Trakanon's Teeth. A named roster that dings for Kunark mobs is
+// worse than no roster: every one of those entries is a mob that cannot die in this game.
+//
+// `action=eqlmetadata` is the wiki's OWN predicate for that question — the same one its skin uses
+// to grey out-of-era links, at the same `Template:PageEra` revision this repo already mirrors.
+// scrape-page-era.ts carries the full citation and the response shape read off the live wire.
+//
+// MARKED, NEVER DROPPED, and the reason is in that file's header too — THE SILENCE PROBLEM:
+// `outOfEra: false` comes back both for a page the wiki classifies as classic AND for a page
+// nobody has classified at all. So the boolean is trustworthy in ONE direction only. A `true` is a
+// positive claim and is recorded; everything else is silence and is recorded as nothing. Deleting
+// the rows would additionally throw away the evidence, and re-deriving it costs another scrape.
+
+const META_BATCH = 450
+
+/** `action=eqlmetadata`'s answer. Shape and citation: scrape-page-era.ts. */
+interface MetaRow {
+  title?: string
+  outOfEra?: boolean
+  requested?: string[]
+}
+interface MetaResponse {
+  eqlmetadata?: { eraRevision?: number; pages?: MetaRow[] }
+}
+
+/** Title → its own era key, matching `pageEraDb.ts pageEraKey` so the two files agree. */
+const eraKey = (title: string): string =>
+  title.replace(/_/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase()
+
+/**
+ * Ask the wiki which of these titles it badges out of era.
+ *
+ * Every answered row is filed under BOTH spellings — what we asked and what the wiki resolved it
+ * to — so a redirect still finds its answer (`the ghoul lord` resolves to `The Ghoul Lord`).
+ */
+async function outOfEraTitles(titles: readonly string[]): Promise<Set<string>> {
+  const out = new Set<string>()
+  for (let i = 0; i < titles.length; i += META_BATCH) {
+    const slice = titles.slice(i, i + META_BATCH)
+    const j = await api<MetaResponse>({ action: 'eqlmetadata', titles: slice.join('|') }, 'POST')
+    const rows = j.eqlmetadata?.pages
+    if (rows === undefined) throw new Error('eqlmetadata returned no pages')
+    for (const row of rows) keepOutOfEra(out, row)
+  }
+  return out
+}
+
+/**
+ * One answered row, filed under BOTH spellings — what we asked and what the wiki resolved it to —
+ * so a redirect still finds its answer (`the ghoul lord` resolves to `The Ghoul Lord`).
+ *
+ * ONLY A `true` IS KEPT. `outOfEra: false` is returned both for classic content and for a page
+ * nobody has classified, so it is silence; recording it would let "nobody looked" argue that a mob
+ * is in era. scrape-page-era.ts calls this THE SILENCE PROBLEM and states it at length.
+ */
+function keepOutOfEra(out: Set<string>, row: MetaRow): void {
+  if (row.outOfEra !== true) return
+  for (const spelling of [row.title, ...(row.requested ?? [])]) {
+    if (spelling !== undefined) out.add(eraKey(spelling))
+  }
+}
+
+/**
+ * Ask the wiki about every page in the roster and stamp the ones it badges out of era. Mutates the
+ * rows in place and returns how many were marked.
+ *
+ * ASKED ABOUT THE PAGE, not the display name, because the page is what the wiki badges. A red-link
+ * row has no page and therefore gets no verdict — which is silence, exactly like a `false`, and
+ * not a claim in either direction.
+ */
+async function markOutOfEra(zones: Record<string, NamedRow[]>): Promise<number> {
+  const rows = Object.values(zones).flat()
+  const pages = [...new Set(rows.map((r) => r.page).filter((p): p is string => p !== undefined))].sort()
+  if (pages.length === 0) return 0
+  const outOfEra = await outOfEraTitles(pages)
+  let marked = 0
+  for (const row of rows) {
+    if (row.page === undefined || !outOfEra.has(eraKey(row.page))) continue
+    row.outOfEra = true
+    marked++
+  }
+  return marked
 }
 
 /** Every distinct zone the mob catalog names — wiki spellings by construction. */
@@ -159,17 +271,24 @@ async function main(): Promise<void> {
     if ((i + 1) % 25 === 0) process.stdout.write(`  …${String(i + 1)}/${String(zones.length)} zones\n`)
   }
 
+  const marked = await markOutOfEra(out)
+
   const data: NamedData = {
     source:
       'eqlwiki.com — the "Notable NPCs" row of each zone page infobox (rendered, not wikitext: ' +
-      'the roster is generated by {{Special:DynamicZoneList}}). A zone with no row is absent here.',
+      'the roster is generated by {{Special:DynamicZoneList}}). A zone with no row is absent here. ' +
+      '`outOfEra` is the wiki\'s own action=eqlmetadata verdict and is recorded ONLY when true: a ' +
+      'false answer is returned both for classic content and for a page nobody classified, so it ' +
+      'is silence rather than evidence of being in era (scrape-page-era.ts states this at length).',
     scrapedAt: new Date().toISOString(),
     zoneCount: withRow,
     namedCount,
+    outOfEraCount: marked,
     // Sorted so a re-scrape diffs cleanly.
     zones: Object.fromEntries(Object.entries(out).sort(([a], [b]) => a.localeCompare(b)))
   }
   writeFileSync(OUT_PATH, `${JSON.stringify(data, null, 2)}\n`)
+  process.stdout.write(`  out of era: ${String(marked)} of ${String(namedCount)}\n`)
   process.stdout.write(
     `named.json: ${String(namedCount)} notable NPCs across ${String(withRow)} zones ` +
       `(of ${String(zones.length)} probed)\n`
