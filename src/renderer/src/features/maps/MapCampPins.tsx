@@ -28,7 +28,8 @@
 
 import type { JSX } from 'react'
 import { useTheme } from '@mui/material'
-import { respawnReading, type RespawnRow } from '@shared/respawn'
+import type { RespawnRow } from '@shared/respawn'
+import { mapClockText } from './mapClock'
 import type { CampPin } from '@shared/campPins'
 import { mapFromLoc } from './mapGeometry'
 import type { MapViewport } from './useMapViewport'
@@ -44,17 +45,6 @@ export interface MapCampPinsProps {
   /** One shared 1 Hz clock — the same instant every countdown on the app reads. */
   now: number
   vp: MapViewport
-}
-
-/** `2m 14s`, or `due` once the estimate has elapsed. Never "spawned": the log did not say that. */
-function clockText(row: RespawnRow | undefined, now: number): string | null {
-  if (!row) return null
-  const r = respawnReading(row, now)
-  if (r.remainingMs === undefined) return null
-  if (r.due) return 'due'
-  const secs = Math.ceil(r.remainingMs / 1000)
-  const m = Math.floor(secs / 60)
-  return m > 0 ? `${String(m)}m ${String(secs % 60)}s` : `${String(secs)}s`
 }
 
 export function MapCampPins({ pins, rows, now, vp }: MapCampPinsProps): JSX.Element {
@@ -77,7 +67,7 @@ export function MapCampPins({ pins, rows, now, vp }: MapCampPinsProps): JSX.Elem
         const at = mapFromLoc({ ns: pin.ns, ew: pin.ew, z: pin.z })
         const p = vp.toScreen(at.x, at.y)
         const row = byKey.get(`${pin.zone.trim().toLowerCase()}::${pin.mob.trim().toLowerCase()}`)
-        const left = clockText(row, now)
+        const left = mapClockText(row, now)
         return (
           <div
             key={`${pin.mob}:${pin.zone}`}

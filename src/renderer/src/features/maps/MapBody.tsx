@@ -169,6 +169,7 @@ function MapSurface({
   camps,
   campRows,
   campNow,
+  campClocks,
   pane
 }: {
   data: MapData
@@ -184,6 +185,8 @@ function MapSurface({
   camps: readonly CampPin[]
   campRows: readonly RespawnRow[]
   campNow: number
+  /** This zone's watched rows by folded mob name - a wiki pin you track draws its countdown. */
+  campClocks: Map<string, RespawnRow>
   /** The sidebar's contribution, or null when it is closed and draws nothing. */
   pane: PaneOverlay | null
 }): JSX.Element {
@@ -216,7 +219,15 @@ function MapSurface({
     >
       <MapCanvas lines={data.lines} vp={vp} layers={layers} zBand={zBand} />
       <MapPointsLayer points={data.points} vp={vp} layers={layers} bands={bands} floor={floor} />
-      {pane != null && <MapMobPins pins={pane.pins} vp={vp} selectedId={pane.selectedId} />}
+      {pane != null && (
+        <MapMobPins
+          pins={pane.pins}
+          vp={vp}
+          selectedId={pane.selectedId}
+          clocks={campClocks}
+          now={campNow}
+        />
+      )}
       {ringAt != null && <MarkerRing at={ringAt} size={26} testId="maps-pane-marker" />}
       {at != null && <MarkerRing at={at} size={22} testId="maps-marker" />}
       {/* THE ONE SEAM, AGAIN: the typed reading reaches the screen through `mapFromLoc` and then
@@ -273,13 +284,15 @@ export interface MapBodyProps {
   camps: readonly CampPin[]
   campRows: readonly RespawnRow[]
   campNow: number
+  /** This zone's watched rows by folded mob name - a wiki pin you track draws its countdown. */
+  campClocks: Map<string, RespawnRow>
   /** A cross-zone hit was clicked — `useSearchJump`'s handler, which changes zone first. */
   onJump: (to: JumpTarget) => void
 }
 
 export default function MapBody(props: MapBodyProps): JSX.Element {
   const { data, empty, vp, hostRef, layers, bands, floor, pane, zoneName, marker, onJump } = props
-  const { locMarker, camps, campRows, campNow } = props
+  const { locMarker, camps, campRows, campNow, campClocks } = props
   return (
     <Stack direction="row" spacing={1.5} sx={{ position: 'relative', flexGrow: 1, minHeight: 0 }}>
       {data != null ? (
@@ -295,6 +308,7 @@ export default function MapBody(props: MapBodyProps): JSX.Element {
           camps={camps}
           campRows={campRows}
           campNow={campNow}
+          campClocks={campClocks}
           pane={paneOverlay(pane)}
         />
       ) : (

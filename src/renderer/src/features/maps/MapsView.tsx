@@ -49,6 +49,7 @@ import type { MapBounds, MapData, MapPackPrefs, ZoneShort } from '@shared/maps'
 import { zoneShortName } from '@shared/zones'
 import { useModule } from '../../lib/useModule'
 import { campsInZone, type CampDelta, type CampPin, type CampSnap } from '@shared/campPins'
+import { clocksByName } from './mapClock'
 import type { RespawnRow } from '@shared/respawn'
 import { useRespawnSnap, useSecondsClock } from '../timers/useRespawn'
 import type { LocDelta, LocReading, LocSnap } from '@shared/maps'
@@ -396,7 +397,12 @@ function useMapOpenTracking(data: MapData | null): void {
  * with instance markers stripped, so `The Ruins of Old Guk 4 (Refined)` and the open-world zone
  * share their camps - the same room, different difficulty.
  */
-function useZoneCamps(): { camps: CampPin[]; campRows: RespawnRow[]; campNow: number } {
+function useZoneCamps(): {
+  camps: CampPin[]
+  campRows: RespawnRow[]
+  campNow: number
+  campClocks: Map<string, RespawnRow>
+} {
   const snap = useModule<CampSnap, CampDelta>('campPins', (_state, delta) => delta)
   const respawn = useRespawnSnap()
   const campNow = useSecondsClock()
@@ -405,7 +411,10 @@ function useZoneCamps(): { camps: CampPin[]; campRows: RespawnRow[]; campNow: nu
   // opinion about a name the fold has already settled.
   const zone = snap?.zone ?? null
   const camps = zone === null || !snap ? [] : campsInZone(snap.pins, zone)
-  return { camps, campRows: respawn.rows, campNow }
+  // THE CLOCKS THE WIKI PINS SHOW. Built here rather than in the layer because this is where the
+  // zone is already known, and because the respawn rows are the same ones the camps read - one
+  // fetch, two consumers.
+  return { camps, campRows: respawn.rows, campNow, campClocks: clocksByName(respawn.rows, zone) }
 }
 
 export default function MapsView(): JSX.Element {
@@ -414,7 +423,7 @@ export default function MapsView(): JSX.Element {
   const raw = useModule<CharacterSnap, CharacterDelta>('character', applyCharacterDelta)?.zone
   // WHERE YOU SAID YOU WERE, from the log's own `/loc` line.
   const reading = useLocReading()
-  const { camps, campRows, campNow } = useZoneCamps()
+  const { camps, campRows, campNow, campClocks } = useZoneCamps()
   const { zone, auto, mode, pick, followCurrent } = useZoneSelection(raw)
   const [prefs, setPrefs] = useState<MapPackPrefs>(loadPackPrefs)
   const [layers, setLayers] = useState<LayerMask>(DEFAULT_LAYERS)
@@ -505,6 +514,7 @@ export default function MapsView(): JSX.Element {
         camps={camps}
         campRows={campRows}
         campNow={campNow}
+        campClocks={campClocks}
         onJump={onJump}
       />
       {/* Reserved for the same reason and on the same condition as the toolbar's row (JOS-205). */}

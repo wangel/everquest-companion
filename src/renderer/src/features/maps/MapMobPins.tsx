@@ -18,10 +18,12 @@
 // deliberately NOT a gesture — selection lives in the pane, where the row can also say "no
 // location on the wiki page", and two selection surfaces would be two things to keep in sync.
 
-import { useMemo, type JSX } from 'react'
+import { Fragment, useMemo, type JSX } from 'react'
 import { useTheme } from '@mui/material'
 import type { PlacedPin } from './mobPins'
 import type { MapViewport } from './useMapViewport'
+import type { RespawnRow } from '@shared/respawn'
+import { mapClockText } from './mapClock'
 
 /** Pin body size in CSS pixels. Does not scale with zoom, for the same reason label text doesn't. */
 const PIN_PX = 9
@@ -36,13 +38,24 @@ export interface MapMobPinsProps {
    * "this is the thing you clicked" symbol on the surface.
    */
   selectedId: string | null
+  /**
+   * The watched rows of this zone, by folded mob name — a pin whose mob you are tracking draws its
+   * countdown. Absent when nothing is watched, which is the fresh-install case and most zones.
+   */
+  clocks?: Map<string, RespawnRow>
+  /** The app's one 1 Hz clock. Only read when `clocks` has a hit. */
+  now?: number
 }
 
-export function MapMobPins({ pins, vp, selectedId }: MapMobPinsProps): JSX.Element {
+export function MapMobPins({ pins, vp, selectedId, clocks, now }: MapMobPinsProps): JSX.Element {
   const { toScreen } = vp
   // The SAME token the search-jump marker paints with (`warning.main`), read from the theme
   // rather than spelled as a hex literal so a theme change can never leave the two disagreeing.
-  const pinColor = useTheme().palette.warning.main
+  const theme = useTheme()
+  const pinColor = theme.palette.warning.main
+  // The clock is the USER's claim (they asked for it), so it takes the tone nothing else
+  // on this surface uses - the same one the camps layer paints with.
+  const clockColor = theme.palette.success.main
   // Keyed on the pin array and the projection, exactly like the label layer's declutter memo:
   // this recomputes per view CHANGE, not per frame.
   const placed = useMemo(() => pins.map((p) => ({ ...p, at: toScreen(p.pin.x, p.pin.y) })), [pins, toScreen])
@@ -54,9 +67,13 @@ export function MapMobPins({ pins, vp, selectedId }: MapMobPinsProps): JSX.Eleme
     >
       {placed.map(({ row, pin, key, at }) => {
         const selected = row.id === selectedId
+        // THE CLOCK THIS APP ALREADY KEEPS, on the pin the app already draws. A watched mob's
+        // countdown belongs where the mob is, and the wiki has placed 6,304 of them for us - there
+        // was never a reason to ask the player for a position the catalog already had.
+        const clock = mapClockText(clocks?.get(row.name.trim().toLowerCase()), now ?? 0)
         return (
+          <Fragment key={key}>
           <span
-            key={key}
             data-testid="maps-mob-pin"
             title={
               pin.pct === undefined
@@ -81,6 +98,29 @@ export function MapMobPins({ pins, vp, selectedId }: MapMobPinsProps): JSX.Eleme
               zIndex: selected ? 3 : 1
             }}
           />
+          {clock !== null && (
+            // A WATCHED MOB'S COUNTDOWN, beside its own pin. It takes the SUCCESS tone rather than
+            // the pin's warning one: the pin is "the wiki placed this", the clock is "and you are
+            // tracking it" - two different claims, and the second is the user's.
+            <span
+              data-testid="maps-mob-clock"
+              data-mob={row.name}
+              style={{
+                position: 'absolute',
+                left: at.px + PIN_PX,
+                top: at.py - PIN_PX / 2,
+                whiteSpace: 'nowrap',
+                fontSize: 11,
+                color: clockColor,
+                textShadow: '0 0 3px rgba(0,0,0,0.9)',
+                pointerEvents: 'none',
+                zIndex: 3
+              }}
+            >
+              {row.name} · {clock}
+            </span>
+          )}
+          </Fragment>
         )
       })}
     </div>
