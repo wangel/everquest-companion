@@ -60,7 +60,12 @@ function clockText(row: RespawnRow | undefined, now: number): string | null {
 export function MapCampPins({ pins, rows, now, vp }: MapCampPinsProps): JSX.Element {
   const theme = useTheme()
   const color = theme.palette.success.main
-  const byKey = new Map(rows.map((r) => [r.key, r]))
+  // KEYED BY ZONE **AND** MOB, because a row id is `<zone key>::<mob key>` and the same name is
+  // watched in more than one zone all the time - EQ names are massively duplicated, which is the
+  // whole reason JOS-194 made respawn clocks zone-scoped. Keying on the mob alone silently took
+  // whichever row happened to come last, so a camp could show another zone's clock: the Timers tab
+  // read `4m 04s` for a supplier in Guk while the map read `due` off a different row entirely.
+  const byKey = new Map(rows.map((r) => [`${r.zone.trim().toLowerCase()}::${r.key}`, r]))
 
   return (
     <div
@@ -71,7 +76,8 @@ export function MapCampPins({ pins, rows, now, vp }: MapCampPinsProps): JSX.Elem
       {pins.map((pin) => {
         const at = mapFromLoc({ ns: pin.ns, ew: pin.ew, z: pin.z })
         const p = vp.toScreen(at.x, at.y)
-        const left = clockText(byKey.get(pin.mob.trim().toLowerCase()), now)
+        const row = byKey.get(`${pin.zone.trim().toLowerCase()}::${pin.mob.trim().toLowerCase()}`)
+        const left = clockText(row, now)
         return (
           <div
             key={`${pin.mob}:${pin.zone}`}
