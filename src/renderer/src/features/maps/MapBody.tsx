@@ -30,8 +30,11 @@ import { MapCanvas } from './MapCanvas'
 import { MapPointsLayer, labelPosition } from './MapPointsLayer'
 import { MapMobPins } from './MapMobPins'
 import { MapLocMarker } from './MapLocMarker'
+import { MapCampPins } from './MapCampPins'
 import MapMobPane from './MapMobPane'
 import { paneOverlay, type PaneOverlay, type ZonePaneState } from './useMapPane'
+import type { CampPin } from '@shared/campPins'
+import type { RespawnRow } from '@shared/respawn'
 import { mapFromLoc, type EqLoc, type LayerMask } from './mapGeometry'
 import { bandRange, type FloorBand } from './floorSlice'
 import type { MapViewport } from './useMapViewport'
@@ -163,6 +166,9 @@ function MapSurface({
   floor,
   marker,
   locMarker,
+  camps,
+  campRows,
+  campNow,
   pane
 }: {
   data: MapData
@@ -174,6 +180,10 @@ function MapSurface({
   marker: Marker | null
   /** The `/loc` the user typed for THIS zone, still in the game's own axes (JOS-98). */
   locMarker: EqLoc | null
+  /** This zone's pinned camps, and the watched rows their clocks come from. */
+  camps: readonly CampPin[]
+  campRows: readonly RespawnRow[]
+  campNow: number
   /** The sidebar's contribution, or null when it is closed and draws nothing. */
   pane: PaneOverlay | null
 }): JSX.Element {
@@ -211,6 +221,9 @@ function MapSurface({
       {at != null && <MarkerRing at={at} size={22} testId="maps-marker" />}
       {/* THE ONE SEAM, AGAIN: the typed reading reaches the screen through `mapFromLoc` and then
           the same `project` every other mark uses. Nothing here knows which way north is. */}
+      {/* Camps UNDER the /loc crosshair: the crosshair is where you are NOW and must never be
+          hidden by a pin for somewhere you stood last week. */}
+      <MapCampPins pins={camps} rows={campRows} now={campNow} vp={vp} />
       {locMarker != null && <MapLocMarker at={mapFromLoc(locMarker)} loc={locMarker} vp={vp} />}
     </Box>
   )
@@ -256,13 +269,17 @@ export interface MapBodyProps {
   marker: Marker | null
   /** This zone's typed-/loc marker, or null. Persistent, unlike `marker` above it. */
   locMarker: EqLoc | null
+  /** This zone's pinned camps, and the watched rows their clocks come from. */
+  camps: readonly CampPin[]
+  campRows: readonly RespawnRow[]
+  campNow: number
   /** A cross-zone hit was clicked — `useSearchJump`'s handler, which changes zone first. */
   onJump: (to: JumpTarget) => void
 }
 
 export default function MapBody(props: MapBodyProps): JSX.Element {
   const { data, empty, vp, hostRef, layers, bands, floor, pane, zoneName, marker, onJump } = props
-  const { locMarker } = props
+  const { locMarker, camps, campRows, campNow } = props
   return (
     <Stack direction="row" spacing={1.5} sx={{ position: 'relative', flexGrow: 1, minHeight: 0 }}>
       {data != null ? (
@@ -275,6 +292,9 @@ export default function MapBody(props: MapBodyProps): JSX.Element {
           floor={floor}
           marker={marker}
           locMarker={locMarker}
+          camps={camps}
+          campRows={campRows}
+          campNow={campNow}
           pane={paneOverlay(pane)}
         />
       ) : (

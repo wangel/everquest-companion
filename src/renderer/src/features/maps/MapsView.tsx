@@ -48,6 +48,9 @@ import type { CharacterDelta, CharacterSnap } from '@shared/types'
 import type { MapBounds, MapData, MapPackPrefs, ZoneShort } from '@shared/maps'
 import { zoneShortName } from '@shared/zones'
 import { useModule } from '../../lib/useModule'
+import { campsInZone, type CampDelta, type CampPin, type CampSnap } from '@shared/campPins'
+import type { RespawnRow } from '@shared/respawn'
+import { useRespawnSnap, useSecondsClock } from '../timers/useRespawn'
 import type { LocDelta, LocReading, LocSnap } from '@shared/maps'
 import { trackFeature } from '../../lib/telemetry'
 import MapBody, { useSearchJump } from './MapBody'
@@ -380,12 +383,38 @@ function useMapOpenTracking(data: MapData | null): void {
   }, [loaded])
 }
 
+
+/**
+ * THIS ZONE'S CAMPS, and the clocks they show.
+ *
+ * Its own hook because MapsView sits at the complexity ceiling of 12, and because the three things
+ * it joins come from three different owners: the camp pins (a module), the respawn rows (another
+ * module, already the one authority on countdowns) and a 1 Hz clock. Nothing here computes a
+ * countdown - `respawnReading` does, in the one place it has always been done.
+ *
+ * FILTERED BY THE ZONE'S OWN NAME, not the map stem. A camp is filed under the zone the log stated
+ * with instance markers stripped, so `The Ruins of Old Guk 4 (Refined)` and the open-world zone
+ * share their camps - the same room, different difficulty.
+ */
+function useZoneCamps(): { camps: CampPin[]; campRows: RespawnRow[]; campNow: number } {
+  const snap = useModule<CampSnap, CampDelta>('campPins', (_state, delta) => delta)
+  const respawn = useRespawnSnap()
+  const campNow = useSecondsClock()
+  // THE MODULE'S OWN ZONE, already stripped of instance markers by the fold. No fallback: with no
+  // snapshot there are no camps to filter, and re-deriving the base zone here would be a second
+  // opinion about a name the fold has already settled.
+  const zone = snap?.zone ?? null
+  const camps = zone === null || !snap ? [] : campsInZone(snap.pins, zone)
+  return { camps, campRows: respawn.rows, campNow }
+}
+
 export default function MapsView(): JSX.Element {
   // WHERE YOU ARE. The character module owns the raw display zone off the `zone` log event; it
   // is undefined until the log prints one, and that absence is a state this view renders.
   const raw = useModule<CharacterSnap, CharacterDelta>('character', applyCharacterDelta)?.zone
   // WHERE YOU SAID YOU WERE, from the log's own `/loc` line.
   const reading = useLocReading()
+  const { camps, campRows, campNow } = useZoneCamps()
   const { zone, auto, mode, pick, followCurrent } = useZoneSelection(raw)
   const [prefs, setPrefs] = useState<MapPackPrefs>(loadPackPrefs)
   const [layers, setLayers] = useState<LayerMask>(DEFAULT_LAYERS)
@@ -473,6 +502,9 @@ export default function MapsView(): JSX.Element {
         zoneName={zoneName}
         marker={marker}
         locMarker={loc.marker}
+        camps={camps}
+        campRows={campRows}
+        campNow={campNow}
         onJump={onJump}
       />
       {/* Reserved for the same reason and on the same condition as the toolbar's row (JOS-205). */}
