@@ -26,7 +26,14 @@
 // elapsing is a fact about the ESTIMATE; whether the mob is standing there is something the log
 // has not said and this app must not claim.
 
-import { respawnClockLabel, respawnReading, type RespawnRow } from '@shared/respawn'
+// RELATIVE, not `@shared/respawn`, for `mobSearch.ts:33`'s stated reason: these are VALUE imports
+// and the alias exists only inside the vite build. Spelling the path is what lets the node test
+// runner drive this module — and it is driven, because the join below has now been the bug three
+// times (a roster keyed on the wiki's zone spelling, a camp keyed on the mob alone, and an
+// instance compared raw). The TYPE import keeps the alias; type imports are erased.
+import { respawnClockLabel, respawnReading } from '../../../../shared/respawn'
+import type { RespawnRow } from '@shared/respawn'
+import { zoneKey } from '../mobs/mobZone'
 import { fmtDuration } from '../buffs/format'
 
 /**
@@ -51,6 +58,18 @@ export function mapClockText(row: RespawnRow | undefined, now: number): string |
 /**
  * The watched rows of ONE zone, keyed by the mob name folded for lookup.
  *
+ * THE ZONE IS FOLDED THROUGH `zoneKey`, WHICH STRIPS THE INSTANCE, and that was a live bug: the
+ * respawn fold files a row under the zone line VERBATIM (`The Ruins of Old Guk 1 (Awakened)`)
+ * while the camp fold strips the tier first (`The Ruins of Old Guk`), and this join compared the
+ * two strings raw. Standing in any instance therefore produced an EMPTY map - every watched mob
+ * drew a bare pin with no countdown, which is exactly what a reporter saw immediately after
+ * pressing Watch on the card.
+ *
+ * STRIPPING IS THE RIGHT DIRECTION, not a convenience: `shared/campPins.ts` already rules that
+ * "the tier is a fact about the difficulty, never about the geography", and a MAP is geography.
+ * The Timers tab keeps its instance scoping - a list of clocks is a different question from a
+ * mark on a room.
+ *
  * KEYED BY NAME rather than by the row's canonical `key`, because the far side of this join is the
  * WIKI's catalog name and the near side is what the LOG printed. They agree for most mobs and
  * disagree for the renamed ones (`the ghoul lord` on the wiki, `Hoptor Thaggelum` in the game -
@@ -60,9 +79,9 @@ export function mapClockText(row: RespawnRow | undefined, now: number): string |
 export function clocksByName(rows: readonly RespawnRow[], zone: string | null): Map<string, RespawnRow> {
   const out = new Map<string, RespawnRow>()
   if (zone === null) return out
-  const want = zone.trim().toLowerCase()
+  const want = zoneKey(zone)
   for (const row of rows) {
-    if (row.zone.trim().toLowerCase() !== want) continue
+    if (zoneKey(row.zone) !== want) continue
     out.set(row.display.trim().toLowerCase(), row)
   }
   return out

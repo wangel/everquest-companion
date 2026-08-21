@@ -34,6 +34,7 @@ import type { JSX } from 'react'
 import { useTheme } from '@mui/material'
 import type { RespawnRow } from '@shared/respawn'
 import { mapClockText } from './mapClock'
+import { zoneKey } from '../mobs/mobZone'
 import type { CampPin } from '@shared/campPins'
 import { mapFromLoc } from './mapGeometry'
 import type { MapViewport } from './useMapViewport'
@@ -63,12 +64,16 @@ export interface MapCampPinsProps {
 export function MapCampPins({ pins, rows, now, vp, wikiPinned }: MapCampPinsProps): JSX.Element {
   const theme = useTheme()
   const color = theme.palette.success.main
+  // FOLDED THROUGH `zoneKey` ON BOTH SIDES, because the two folds disagree about instances: a camp
+  // is filed under the base zone and a respawn row under the zone line verbatim, so comparing them
+  // raw found nothing the moment the player stood in an instance. mapClock.ts carries the argument.
+  //
   // KEYED BY ZONE **AND** MOB, because a row id is `<zone key>::<mob key>` and the same name is
   // watched in more than one zone all the time - EQ names are massively duplicated, which is the
   // whole reason JOS-194 made respawn clocks zone-scoped. Keying on the mob alone silently took
   // whichever row happened to come last, so a camp could show another zone's clock: the Timers tab
   // read `4m 04s` for a supplier in Guk while the map read `due` off a different row entirely.
-  const byKey = new Map(rows.map((r) => [`${r.zone.trim().toLowerCase()}::${r.key}`, r]))
+  const byKey = new Map(rows.map((r) => [`${zoneKey(r.zone)}::${r.key}`, r]))
 
   return (
     <div
@@ -81,7 +86,7 @@ export function MapCampPins({ pins, rows, now, vp, wikiPinned }: MapCampPinsProp
         .map((pin) => {
         const at = mapFromLoc({ ns: pin.ns, ew: pin.ew, z: pin.z })
         const p = vp.toScreen(at.x, at.y)
-        const row = byKey.get(`${pin.zone.trim().toLowerCase()}::${pin.mob.trim().toLowerCase()}`)
+        const row = byKey.get(`${zoneKey(pin.zone)}::${pin.mob.trim().toLowerCase()}`)
         const left = mapClockText(row, now)
         return (
           <div
