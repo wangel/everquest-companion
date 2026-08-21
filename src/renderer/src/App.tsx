@@ -648,8 +648,7 @@ export default function App(): JSX.Element {
 
       {/* Always-mounted: plays fired alert sounds regardless of the active tab. */}
       <AlertPlayer />
-      {/* Always-mounted for AlertPlayer's reason: a named dies while you are on whatever tab you
-          were already on, and a prompt only the Maps tab could show is a prompt nobody sees. */}
+      {/* Always-mounted for AlertPlayer's reason; CampPrompt.tsx's header says why. */}
       <CampPromptHost />
 
       <CelebrationToasts
