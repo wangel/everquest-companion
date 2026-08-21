@@ -65,6 +65,18 @@ export function mapClockText(row: RespawnRow | undefined, now: number): string |
  * drew a bare pin with no countdown, which is exactly what a reporter saw immediately after
  * pressing Watch on the card.
  *
+ * AND WHEN SEVERAL ROWS FOLD TOGETHER, THE NEWEST ONE WINS. This is the other half of stripping
+ * the tier and it was a bug in its own right the moment the first half shipped: the respawn fold
+ * keeps a SEPARATE row per instance, so one mob in one room really does have three or four of
+ * them, and a plain `set` per row means whichever happened to come last silently won. Measured on
+ * a reporter's log, that is exactly what went wrong: `A ghoul sentinel` had a live row in the open
+ * zone reading `3m 40s` and a long-dead one in `4 (Refined)`, the Refined row came second, and the
+ * pin drew nothing while the Timers tab counted down beside it.
+ *
+ * `baseTs` is the tiebreak because it is what the clock counts FROM — the most recent thing the
+ * log said about this mob in this room. An older instance's row is not wrong, it is just staler
+ * news about the same geography, and a map should show the freshest.
+ *
  * STRIPPING IS THE RIGHT DIRECTION, not a convenience: `shared/campPins.ts` already rules that
  * "the tier is a fact about the difficulty, never about the geography", and a MAP is geography.
  * The Timers tab keeps its instance scoping - a list of clocks is a different question from a
@@ -82,7 +94,11 @@ export function clocksByName(rows: readonly RespawnRow[], zone: string | null): 
   const want = zoneKey(zone)
   for (const row of rows) {
     if (zoneKey(row.zone) !== want) continue
-    out.set(row.display.trim().toLowerCase(), row)
+    const key = row.display.trim().toLowerCase()
+    const prior = out.get(key)
+    // NEWEST WINS, because folding the tier away makes several rows collide on one key and the
+    // arbitrary one is wrong about half the time. See the note above.
+    if (prior === undefined || row.baseTs > prior.baseTs) out.set(key, row)
   }
   return out
 }

@@ -73,7 +73,16 @@ export function MapCampPins({ pins, rows, now, vp, wikiPinned }: MapCampPinsProp
   // whole reason JOS-194 made respawn clocks zone-scoped. Keying on the mob alone silently took
   // whichever row happened to come last, so a camp could show another zone's clock: the Timers tab
   // read `4m 04s` for a supplier in Guk while the map read `due` off a different row entirely.
-  const byKey = new Map(rows.map((r) => [`${zoneKey(r.zone)}::${r.key}`, r]))
+  // NEWEST WINS on a collision, for mapClock.ts's stated reason: folding the tier away means one
+  // mob in one room can own three or four rows (one per instance), and `new Map(rows.map(...))`
+  // silently kept whichever came last - which on a real log was a long-dead Refined row sitting on
+  // top of a live open-world one.
+  const byKey = new Map<string, RespawnRow>()
+  for (const r of rows) {
+    const k = `${zoneKey(r.zone)}::${r.key}`
+    const prior = byKey.get(k)
+    if (prior === undefined || r.baseTs > prior.baseTs) byKey.set(k, r)
+  }
 
   return (
     <div

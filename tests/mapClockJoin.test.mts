@@ -107,3 +107,33 @@ test('no row and no estimate say nothing rather than something invented', () => 
   const never = row('A ghoul ritualist', 'Guk', { estimateMs: undefined })
   assert.equal(mapClockText(never, NOW), null, 'a mob killed once has no gap to learn from')
 })
+
+test('WHEN SEVERAL INSTANCES FOLD TOGETHER, THE NEWEST ROW WINS', () => {
+  // THE SECOND HALF OF THE SAME REPORT, and a bug the FIRST half created. The respawn fold keeps a
+  // separate row per instance, so one mob in one room really does own three or four of them. A
+  // plain `set` per row kept whichever came last: on the reporter's log `A ghoul sentinel` had a
+  // live open-world row reading minutes and a long-dead `4 (Refined)` one, the Refined row came
+  // second, and the pin drew nothing while the Timers tab counted down beside it.
+  const stale = row('A ghoul sentinel', 'The Ruins of Old Guk 4 (Refined)', {
+    baseTs: NOW - 12_000_000,
+    estimateMs: 648_000
+  })
+  const live = row('A ghoul sentinel', 'The Ruins of Old Guk', { baseTs: NOW - 300_000, estimateMs: 648_000 })
+
+  // Both orders, because the defect was order-dependent and a fix that only works one way is luck.
+  for (const rows of [[live, stale], [stale, live]]) {
+    const found = clocksByName(rows, 'The Ruins of Old Guk')
+    assert.equal(found.size, 1, 'one mob, one clock')
+    assert.equal(found.get('a ghoul sentinel')?.baseTs, live.baseTs, 'the freshest news about the room')
+    assert.ok(mapClockText(found.get('a ghoul sentinel'), NOW), 'and it draws')
+  }
+})
+
+test('…and a STALER row cannot bury a live one, whichever tier each is in', () => {
+  // The direction that matters: an old open-world kill must not hide a live instance clock either.
+  const oldOpen = row('A ghoul sentinel', 'The Ruins of Old Guk', { baseTs: NOW - 12_000_000 })
+  const liveInstance = row('A ghoul sentinel', 'The Ruins of Old Guk 1 (Awakened)', { baseTs: NOW - 60_000 })
+  const found = clocksByName([oldOpen, liveInstance], 'The Ruins of Old Guk')
+  assert.equal(found.get('a ghoul sentinel')?.zone, 'The Ruins of Old Guk 1 (Awakened)')
+  assert.ok(mapClockText(found.get('a ghoul sentinel'), NOW))
+})
